@@ -456,6 +456,16 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
             # Sort by distance
             processed_locations.sort(key=lambda x: x["distance"])
             
+            # Deduplicate by name (some locations appear twice in Providence API)
+            seen_names = set()
+            unique_locations = []
+            for loc in processed_locations:
+                if loc["name"] not in seen_names:
+                    seen_names.add(loc["name"])
+                    unique_locations.append(loc)
+            
+            processed_locations = unique_locations
+            
             # Take top 7 closest
             processed_locations = processed_locations[:7]
             
