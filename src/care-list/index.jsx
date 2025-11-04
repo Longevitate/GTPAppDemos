@@ -34,17 +34,22 @@ function App() {
       <div className="max-w-full">
         <div className="flex flex-row items-center gap-4 sm:gap-4 border-b border-black/5 py-4">
           <div
-            className="sm:w-18 w-16 aspect-square rounded-xl bg-cover bg-center flex items-center justify-center"
-            style={{
-              background: "linear-gradient(135deg, #0066cc 0%, #004c99 100%)",
-            }}
+            className="sm:w-18 w-16 aspect-square rounded-xl bg-white flex items-center justify-center"
           >
             <svg
-              className="w-10 h-10 text-white"
-              fill="currentColor"
-              viewBox="0 0 24 24"
+              className="w-12 h-12"
+              viewBox="0 0 100 100"
+              xmlns="http://www.w3.org/2000/svg"
             >
-              <path d="M19 3H5c-1.1 0-1.99.9-1.99 2L3 19c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-1 11h-4v4h-4v-4H6v-4h4V6h4v4h4v4z" />
+              {/* Providence Cross Logo */}
+              {/* Vertical bar - green */}
+              <path d="M40 10 L40 35 L30 35 L30 65 L40 65 L40 90 L60 90 L60 65 L70 65 L70 35 L60 35 L60 10 Z" fill="#3A7D44"/>
+              {/* Horizontal bar - green */}
+              <path d="M10 40 L35 40 L35 30 L65 30 L65 40 L90 40 L90 60 L65 60 L65 70 L35 70 L35 60 L10 60 Z" fill="#3A7D44"/>
+              {/* Vertical bar - blue overlay */}
+              <path d="M45 10 L45 35 L40 35 L40 65 L45 65 L45 90 L55 90 L55 65 L60 65 L60 35 L55 35 L55 10 Z" fill="#0066B3"/>
+              {/* Horizontal bar - blue overlay */}
+              <path d="M10 45 L35 45 L35 40 L65 40 L65 45 L90 45 L90 55 L65 55 L65 60 L35 60 L35 55 L10 55 Z" fill="#0066B3"/>
             </svg>
           </div>
           <div>
@@ -54,14 +59,6 @@ function App() {
             <div className="text-sm text-black/60">
               Find urgent care and express care near you
             </div>
-          </div>
-          <div className="flex-auto hidden sm:flex justify-end pr-2">
-            <button
-              type="button"
-              className="cursor-pointer inline-flex items-center rounded-full bg-[#0066cc] text-white px-4 py-1.5 sm:text-md text-sm font-medium hover:opacity-90 active:opacity-100"
-            >
-              Find Nearby
-            </button>
           </div>
         </div>
         <div className="min-w-full text-sm flex flex-col">
@@ -107,7 +104,7 @@ function App() {
                           <div className="flex items-center gap-1">
                             <Star
                               strokeWidth={1.5}
-                              className="h-3 w-3 text-black"
+                              className="h-3 w-3 text-yellow-500 fill-yellow-500"
                             />
                             <span>{location.rating_value}</span>
                             <span className="text-xs text-black/50">
