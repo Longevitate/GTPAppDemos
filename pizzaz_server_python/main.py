@@ -546,6 +546,8 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
         structured_content = {"pizzaTopping": payload.pizza_topping}
 
     # For care-locations, store data in session and pass session ID to widget
+    widget_uri_for_template = widget.template_uri  # Default to base URI
+    
     if widget.identifier == "care-locations" and "locations" in structured_content:
         print(f"Storing {len(structured_content.get('locations', []))} locations for widget")
         if structured_content.get('locations'):
@@ -556,7 +558,8 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
         
         # Modify widget URI to include session ID
         widget_uri_with_session = f"{widget.template_uri}?session={session_id}"
-        print(f"Widget URI: {widget_uri_with_session}")
+        widget_uri_for_template = widget_uri_with_session  # Use session URI for template
+        print(f"Widget URI with session: {widget_uri_with_session}")
         
         # Create widget resource with session ID in URI
         widget_resource = types.EmbeddedResource(
@@ -573,7 +576,7 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
     
     meta: Dict[str, Any] = {
         "openai.com/widget": widget_resource.model_dump(mode="json"),
-        "openai/outputTemplate": widget.template_uri,
+        "openai/outputTemplate": widget_uri_for_template,  # ✅ Use session URI for care-locations
         "openai/toolInvocation/invoking": widget.invoking,
         "openai/toolInvocation/invoked": widget.invoked,
         "openai/widgetAccessible": True,
