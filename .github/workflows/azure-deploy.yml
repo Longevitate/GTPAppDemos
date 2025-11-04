@@ -5,6 +5,11 @@ on:
     branches:
       - main
 
+permissions:
+  id-token: write
+  contents: read
+  packages: write
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -37,27 +42,27 @@ jobs:
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS_JSON }}
 
-    - name: Login to Docker Hub
+    - name: Compute lowercase image name
+      run: echo "IMAGE_NAME=ghcr.io/${GITHUB_REPOSITORY,,}:latest" >> $GITHUB_ENV
+
+    - name: Login to GHCR
       uses: docker/login-action@v3
       with:
-        username: ${{ secrets.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Build Docker image
-      run: |
-        docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/openai-apps-sdk:latest .
-
-    - name: Push Docker image
-      run: |
-        docker push ${{ secrets.DOCKERHUB_USERNAME }}/openai-apps-sdk:latest
+    - name: Build and push image
+      uses: docker/build-push-action@v6
+      with:
+        push: true
+        tags: ${{ env.IMAGE_NAME }}
 
     - name: Deploy to Azure Web App
-      run: |
-        az webapp config container set \
-          --name ${{ secrets.AZURE_WEBAPP_NAME }} \
-          --resource-group gptApps \
-          --docker-custom-image-name ${{ secrets.DOCKERHUB_USERNAME }}/openai-apps-sdk:latest \
-          --output none
+      uses: azure/webapps-deploy@v3
+      with:
+        app-name: ${{ secrets.AZURE_WEBAPP_NAME }}
+        images: ${{ env.IMAGE_NAME }}
 
     - name: Azure logout
       run: az logout
