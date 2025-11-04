@@ -227,45 +227,8 @@ class CareLocationInput(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="allow")
 
 
-# Session storage for widget data
-# In production, use Redis or similar
-widget_sessions: Dict[str, Dict[str, Any]] = {}
-
-def store_widget_data(data: dict, session_id: str = None, ttl_minutes: int = 15) -> str:
-    """Store widget data with a session ID and expiration time."""
-    if not session_id:
-        session_id = str(uuid.uuid4())
-    expires = datetime.now() + timedelta(minutes=ttl_minutes)
-    widget_sessions[session_id] = {
-        "data": data,
-        "expires": expires
-    }
-    print(f"[Session] Stored session {session_id} with {len(data.get('locations', []))} locations, expires in {ttl_minutes} min")
-    return session_id
-
-def get_widget_data(session_id: str) -> Optional[dict]:
-    """Retrieve widget data by session ID if not expired."""
-    session = widget_sessions.get(session_id)
-    if not session:
-        print(f"[Session] Session {session_id} not found")
-        return None
-    
-    if session["expires"] < datetime.now():
-        print(f"[Session] Session {session_id} expired")
-        del widget_sessions[session_id]
-        return None
-    
-    print(f"[Session] Retrieved session {session_id}")
-    return session["data"]
-
-def cleanup_expired_sessions():
-    """Remove expired sessions from storage."""
-    now = datetime.now()
-    expired = [sid for sid, sess in widget_sessions.items() if sess["expires"] < now]
-    for sid in expired:
-        del widget_sessions[sid]
-    if expired:
-        print(f"[Session] Cleaned up {len(expired)} expired sessions")
+# No session storage needed - stateless architecture!
+# Widget will call API with arguments passed via meta tags
 
 mcp = FastMCP(
     name="pizzaz-python",
@@ -546,38 +509,39 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
         
         structured_content = {"pizzaTopping": payload.pizza_topping}
 
-    # For care-locations, store data in session and pass session ID to widget
+    # For care-locations, inject arguments as meta tags so widget can fetch fresh data
     widget_uri_for_template = widget.template_uri  # Default to base URI
     
-    if widget.identifier == "care-locations" and "locations" in structured_content:
-        print(f"Storing {len(structured_content.get('locations', []))} locations for widget")
-        if structured_content.get('locations'):
-            print(f"First location: {structured_content['locations'][0].get('name')} @ {structured_content['locations'][0].get('distance')} mi")
+    if widget.identifier == "care-locations":
+        print(f"[Widget] Injecting arguments into widget HTML")
         
-        # Generate unique session ID for this request
-        session_id = str(uuid.uuid4())
-        store_widget_data(structured_content, session_id=session_id, ttl_minutes=10)
-        print(f"[Session] Data stored with key: {session_id}")
+        # Get the user's location and reason from the processed data
+        user_location = structured_content.get("location", "")
+        user_reason = structured_content.get("reason", "")
         
-        # Inject session ID into HTML via meta tag (ChatGPT might preserve this)
+        print(f"[Widget] User location: {user_location}, reason: {user_reason}")
+        
+        # Inject arguments as meta tags so widget can call API
+        meta_tags = []
+        if user_location:
+            meta_tags.append(f'<meta name="care-location" content="{user_location}">')
+        if user_reason:
+            meta_tags.append(f'<meta name="care-reason" content="{user_reason}">')
+        
         modified_html = widget.html.replace(
             '<head>',
-            f'<head>\n<meta name="session-id" content="{session_id}">'
+            f'<head>\n{chr(10).join(meta_tags)}'
         )
         
-        # Also try URL param (might be stripped but worth trying)
-        widget_uri_with_session = f"{widget.template_uri}?session={session_id}"
-        widget_uri_for_template = widget_uri_with_session
-        print(f"Widget URI: {widget_uri_with_session}")
-        print(f"[Session] Injected session ID into HTML meta tag")
+        print(f"[Widget] Injected {len(meta_tags)} meta tags into HTML")
         
         # Create widget resource with modified HTML
         widget_resource = types.EmbeddedResource(
             type="resource",
             resource=types.TextResourceContents(
-                uri=widget_uri_with_session,
+                uri=widget.template_uri,
                 mimeType=MIME_TYPE,
-                text=modified_html,  # Use HTML with injected meta tag
+                text=modified_html,
                 title=widget.title,
             ),
         )
@@ -617,49 +581,111 @@ app = mcp.streamable_http_app()
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
-async def get_widget_data_endpoint(request):
-    """API endpoint to fetch widget data by session ID."""
-    session_id = request.path_params.get('session_id')
+async def get_care_locations_endpoint(request):
+    """Stateless API endpoint to fetch care locations on-demand."""
+    # Get query parameters
+    location = request.query_params.get('location')
+    reason = request.query_params.get('reason', 'general care')
     
-    # Cleanup expired sessions periodically
-    cleanup_expired_sessions()
+    print(f"[API] Request for care locations - location: {location}, reason: {reason}")
     
-    # Special case: "latest" returns the most recent session
-    if session_id == "latest":
-        print("[API] Request for 'latest' session")
-        if widget_sessions:
-            # Find the newest non-expired session
-            now = datetime.now()
-            valid_sessions = [
-                (sid, sess) for sid, sess in widget_sessions.items()
-                if sess["expires"] > now
-            ]
-            if valid_sessions:
-                # Sort by expiration time (most recent first)
-                latest_sid, latest_sess = max(valid_sessions, key=lambda x: x[1]["expires"])
-                data = latest_sess["data"]
-                print(f"[API] Serving latest session {latest_sid} with {len(data.get('locations', []))} locations")
-                return JSONResponse(data)
-        print("[API] No valid sessions found")
+    try:
+        # Fetch all Providence locations from cache
+        all_locations = await fetch_providence_locations()
+        print(f"[API] Loaded {len(all_locations)} locations from cache")
+        
+        # Process location parameter to get coordinates
+        user_coords = None
+        if location and location.strip():
+            user_coords = zip_to_coords(location)
+            if user_coords:
+                print(f"[API] Geocoded ZIP {location} to coords: {user_coords}")
+            else:
+                print(f"[API] Warning: Could not geocode location: {location}")
+        
+        # Calculate distances and sort if we have user coordinates
+        processed_locations = []
+        if user_coords and all_locations:
+            print(f"[API] Processing {len(all_locations)} locations for distance sorting...")
+            user_lat, user_lon = user_coords
+            
+            for loc in all_locations:
+                coords = loc.get("coordinates")
+                if coords and coords.get("lat") and coords.get("lng"):
+                    distance = haversine_distance(
+                        user_lat, user_lon,
+                        coords["lat"], coords["lng"]
+                    )
+                    
+                    processed_loc = {
+                        "id": loc.get("id"),
+                        "name": loc.get("name"),
+                        "address_plain": loc.get("address_plain"),
+                        "coordinates": coords,
+                        "distance": round(distance, 1),
+                        "image": loc.get("image"),
+                        "phone": loc.get("phone"),
+                        "url": loc.get("url"),
+                        "rating_value": loc.get("rating_value"),
+                        "rating_count": loc.get("rating_count"),
+                        "hours_today": loc.get("hours_today"),
+                        "is_express_care": loc.get("is_express_care"),
+                        "is_urgent_care": loc.get("is_urgent_care"),
+                    }
+                    processed_locations.append(processed_loc)
+            
+            # Sort by distance
+            processed_locations.sort(key=lambda x: x["distance"])
+            
+            # Take top 7 closest
+            processed_locations = processed_locations[:7]
+            
+            # Debug: log top 3 locations
+            if processed_locations:
+                print(f"[API] Top 3 closest locations:")
+                for loc in processed_locations[:3]:
+                    print(f"  - {loc['name']}: {loc['distance']} mi")
+        else:
+            # No location provided - return first 7 without distances
+            for loc in all_locations[:7]:
+                processed_loc = {
+                    "id": loc.get("id"),
+                    "name": loc.get("name"),
+                    "address_plain": loc.get("address_plain"),
+                    "coordinates": loc.get("coordinates"),
+                    "distance": None,
+                    "image": loc.get("image"),
+                    "phone": loc.get("phone"),
+                    "url": loc.get("url"),
+                    "rating_value": loc.get("rating_value"),
+                    "rating_count": loc.get("rating_count"),
+                    "hours_today": loc.get("hours_today"),
+                    "is_express_care": loc.get("is_express_care"),
+                    "is_urgent_care": loc.get("is_urgent_care"),
+                }
+                processed_locations.append(processed_loc)
+        
+        response_data = {
+            "reason": reason,
+            "location": location or "unspecified",
+            "user_coords": user_coords,
+            "locations": processed_locations,
+        }
+        
+        print(f"[API] Returning {len(processed_locations)} locations")
+        return JSONResponse(response_data)
+        
+    except Exception as e:
+        print(f"[API] Error processing request: {e}")
+        import traceback
+        traceback.print_exc()
         return JSONResponse(
-            {"error": "No sessions available", "locations": []},
-            status_code=404
-        )
-    
-    # Normal session lookup
-    data = get_widget_data(session_id)
-    if data:
-        print(f"[API] Serving {len(data.get('locations', []))} locations for session {session_id}")
-        return JSONResponse(data)
-    else:
-        print(f"[API] Session {session_id} not found or expired")
-        return JSONResponse(
-            {"error": "Session not found or expired", "locations": []},
-            status_code=404
+            {"error": str(e), "locations": []},
+            status_code=500
         )
 
 # Add the route to the app
-app.routes.insert(0, Route('/api/widget-data/{session_id}', get_widget_data_endpoint))
+app.routes.insert(0, Route('/api/care-locations', get_care_locations_endpoint))
 
 # Mount static files for widget assets
 app.mount("/assets", StaticFiles(directory=str(ASSETS_DIR)), name="assets")

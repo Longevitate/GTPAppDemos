@@ -11,47 +11,32 @@ function App() {
     console.log('[Care Widget] window.location.search:', window.location.search);
     console.log('[Care Widget] window.location.href:', window.location.href);
     
-    // Try multiple methods to get session ID
-    let sessionId = null;
+    // Read arguments from meta tags (injected by server)
+    const locationMeta = document.querySelector('meta[name="care-location"]');
+    const reasonMeta = document.querySelector('meta[name="care-reason"]');
     
-    // Method 1: Check meta tag (injected by server)
-    const metaTag = document.querySelector('meta[name="session-id"]');
-    if (metaTag) {
-      sessionId = metaTag.getAttribute('content');
-      console.log(`[Care Widget] ✅ Found session ID in meta tag: ${sessionId}`);
-    }
+    const location = locationMeta?.getAttribute('content') || '';
+    const reason = reasonMeta?.getAttribute('content') || '';
     
-    // Method 2: Check URL parameter (might be stripped by ChatGPT sandbox)
-    if (!sessionId) {
-      const urlParams = new URLSearchParams(window.location.search);
-      sessionId = urlParams.get('session');
-      if (sessionId) {
-        console.log(`[Care Widget] ✅ Found session ID in URL param: ${sessionId}`);
-      }
-    }
+    console.log(`[Care Widget] Arguments from meta tags:`);
+    console.log(`  - location: ${location || '(none)'}`);
+    console.log(`  - reason: ${reason || '(none)'}`);
     
-    // Method 3: Fallback - use 'latest' for single-user scenarios
-    if (!sessionId) {
-      console.log('[Care Widget] ⚠️ No session ID found, falling back to newest data');
-      sessionId = 'latest';
-    }
-    
-    // Determine API server URL
-    // Widget is sandboxed, so use relative URLs (ChatGPT should proxy them)
-    let serverUrl = '';
-    
+    // Detect sandbox environment
     const sandboxMatch = window.location.hostname.match(/^connector_([a-f0-9]+)\.web-sandbox/);
     if (sandboxMatch) {
       console.log('[Care Widget] Detected sandbox environment');
     }
     
-    console.log(`[Care Widget] Using session ID: ${sessionId}`);
-    console.log('[Care Widget] Fetching data from API...');
+    // Build API URL with query parameters
+    const params = new URLSearchParams();
+    if (location) params.append('location', location);
+    if (reason) params.append('reason', reason);
     
-    // Fetch data from API endpoint
-    const apiUrl = `${serverUrl}/api/widget-data/${sessionId}`;
+    const apiUrl = `/api/care-locations?${params.toString()}`;
     console.log(`[Care Widget] Fetching from: ${apiUrl}`);
     
+    // Fetch fresh data from stateless API
     fetch(apiUrl)
       .then(response => {
         console.log(`[Care Widget] API response status: ${response.status}`);
