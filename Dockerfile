@@ -32,17 +32,17 @@ COPY . .
 # Build the assets
 RUN pnpm run build
 
-# Expose ports for both MCP servers
-EXPOSE 8000 8001
+# Expose the port that Azure Web App expects
+EXPOSE 8080
 
-# Create startup script to run both servers
+# Create startup script to run the MCP server on the correct port
 RUN echo '#!/bin/sh' > /app/start.sh && \
-    echo 'echo "Starting MCP servers..."' >> /app/start.sh && \
+    echo 'echo "Starting MCP server..."' >> /app/start.sh && \
     echo '. /opt/venv/bin/activate' >> /app/start.sh && \
-    echo 'uvicorn pizzaz_server_python.main:app --host 0.0.0.0 --port 8000 &' >> /app/start.sh && \
-    echo 'uvicorn solar-system_server_python.main:app --host 0.0.0.0 --port 8001 &' >> /app/start.sh && \
-    echo 'wait' >> /app/start.sh && \
+    echo 'PORT=${PORT:-8080}' >> /app/start.sh && \
+    echo 'echo "Listening on port $PORT"' >> /app/start.sh && \
+    echo 'uvicorn pizzaz_server_python.main:app --host 0.0.0.0 --port $PORT' >> /app/start.sh && \
     chmod +x /app/start.sh
 
-# Start both servers
+# Start the server
 CMD ["/app/start.sh"]
