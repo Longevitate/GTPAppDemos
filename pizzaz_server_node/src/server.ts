@@ -121,6 +121,15 @@ const widgets: PizzazWidget[] = [
     html: readWidgetHtml("pizzaz-list"),
     responseText: "Rendered a pizza list!",
   },
+  {
+    id: "care-locations",
+    title: "Show Care Locations",
+    templateUri: "ui://widget/care-list.html",
+    invoking: "Finding care locations",
+    invoked: "Found care locations",
+    html: readWidgetHtml("care-list"),
+    responseText: "Showing Providence care locations!",
+  },
 ];
 
 const widgetsById = new Map<string, PizzazWidget>();
@@ -143,14 +152,35 @@ const toolInputSchema = {
   additionalProperties: false,
 } as const;
 
+const careLocationInputSchema = {
+  type: "object",
+  properties: {
+    reason: {
+      type: "string",
+      description: "Reason for seeking care (optional).",
+    },
+    location: {
+      type: "string",
+      description: "User location or ZIP code (optional).",
+    },
+  },
+  required: [],
+  additionalProperties: false,
+} as const;
+
 const toolInputParser = z.object({
   pizzaTopping: z.string(),
+});
+
+const careLocationInputParser = z.object({
+  reason: z.string().optional(),
+  location: z.string().optional(),
 });
 
 const tools: Tool[] = widgets.map((widget) => ({
   name: widget.id,
   description: widget.title,
-  inputSchema: toolInputSchema,
+  inputSchema: widget.id === "care-locations" ? careLocationInputSchema : toolInputSchema,
   title: widget.title,
   _meta: widgetMeta(widget),
   // To disable the approval prompt for the widgets
@@ -243,7 +273,20 @@ function createPizzazServer(): Server {
         throw new Error(`Unknown tool: ${request.params.name}`);
       }
 
-      const args = toolInputParser.parse(request.params.arguments ?? {});
+      let structuredContent: any;
+
+      if (widget.id === "care-locations") {
+        const args = careLocationInputParser.parse(request.params.arguments ?? {});
+        structuredContent = {
+          reason: args.reason || "general care",
+          location: args.location || "unspecified",
+        };
+      } else {
+        const args = toolInputParser.parse(request.params.arguments ?? {});
+        structuredContent = {
+          pizzaTopping: args.pizzaTopping,
+        };
+      }
 
       return {
         content: [
@@ -252,9 +295,7 @@ function createPizzazServer(): Server {
             text: widget.responseText,
           },
         ],
-        structuredContent: {
-          pizzaTopping: args.pizzaTopping,
-        },
+        structuredContent,
         _meta: widgetMeta(widget),
       };
     }

@@ -1,0 +1,121 @@
+{
+  "timeslot_visit_type": "default",
+  "locations": [
+    {
+      "id": 1070211711,
+      "name": "Providence ExpressCare - North Lombard",
+      "address_plain": "5308 N Lombard St #102, Portland, OR 97203, USA",
+      "coordinates": {
+        "lat": 45.582446,
+        "lng": -122.724518
+      },
+      "hours_today": {
+        "name": "Monday",
+        "short_name": "Mon",
+        "start": "8:00 am",
+        "end": "8:00 pm",
+        "is24hours": false
+      },
+      "image": "https://www.providence.org/-/media/project/psjh/shared/images/locations/thumbnails/expresscarenorthlombard.jpg",
+      "is_express_care": true,
+      "is_urgent_care": true,
+      "phone": "",
+      "url": "https://www.providence.org/locations/urgent-care/or/expresscare-north-lombard",
+      "rating_value": "4.8",
+      "rating_count": "480"
+    },
+    {
+      "id": -332141651,
+      "name": "Providence Immediate Care - Canby",
+      "address_plain": "Sequoia Pkwy & SE Hazel Dell Way, Canby, OR 97013, USA",
+      "coordinates": {
+        "lat": 45.26761,
+        "lng": -122.67496
+      },
+      "hours_today": {
+        "name": "Monday",
+        "short_name": "Mon",
+        "start": "7:00 am",
+        "end": "6:45 pm",
+        "is24hours": false
+      },
+      "image": "https://www.providence.org/-/media/project/psjh/shared/images/locations/thumbnails/urgentcarecanby.jpg",
+      "is_express_care": false,
+      "is_urgent_care": true,
+      "phone": "503-483-9226",
+      "url": "https://www.providence.org/locations/urgent-care/or/immediate-care-canby",
+      "rating_value": "4.6",
+      "rating_count": "553"
+    },
+    {
+      "id": -1942499990,
+      "name": "Providence ExpressCare - Lacey Marketplace",
+      "address_plain": "1350 Marvin Rd NE STE D, Lacey, WA 985163877, USA",
+      "coordinates": {
+        "lat": 47.05941,
+        "lng": -122.764178
+      },
+      "hours_today": {
+        "name": "Monday",
+        "short_name": "Mon",
+        "start": "8:00 am",
+        "end": "8:00 pm",
+        "is24hours": false
+      },
+      "image": "https://www.providence.org/-/media/project/psjh/shared/images/locations/thumbnails/expresscarewalgreens.jpg",
+      "is_express_care": true,
+      "is_urgent_care": true,
+      "phone": "",
+      "url": "https://www.providence.org/locations/urgent-care/wa/expresscare-lacey-marketplace",
+      "rating_value": "4.7",
+      "rating_count": "210"
+    },
+    {
+      "id": -894128894,
+      "name": "St. Joseph Heritage Urgent Care – Orange, Main Street",
+      "address_plain": "363 S Main St Ste 110, Orange, CA 92868, USA",
+      "coordinates": {
+        "lat": 33.783075,
+        "lng": -117.866983
+      },
+      "hours_today": {
+        "name": "Monday",
+        "short_name": "Mon",
+        "start": "8:00 am",
+        "end": "8:00 pm",
+        "is24hours": false
+      },
+      "image": "https://www.providence.org/-/media/project/psjh/shared/images/services/thumbnails/urgentcare_sjomainstreetorange.png",
+      "is_express_care": false,
+      "is_urgent_care": true,
+      "phone": "714-855-3602",
+      "url": "https://www.providence.org/locations/urgent-care/ca/orange-main-street-urgent-care",
+      "rating_value": "4.5",
+      "rating_count": "320"
+    },
+    {
+      "id": -588828672,
+      "name": "Providence ExpressCare at Walgreens - Everett Broadway",
+      "address_plain": "2205 Broadway, Everett, WA 98201, USA",
+      "coordinates": {
+        "lat": 47.988035,
+        "lng": -122.200925
+      },
+      "hours_today": {
+        "name": "Monday",
+        "short_name": "Mon",
+        "start": "8:00 am",
+        "end": "8:00 pm",
+        "is24hours": false
+      },
+      "image": "https://www.providence.org/-/media/project/psjh/shared/images/locations/thumbnails/expresscareeverettbroadway.jpg",
+      "is_express_care": true,
+      "is_urgent_care": true,
+      "phone": "",
+      "url": "https://www.providence.org/locations/urgent-care/wa/expresscare-murphys-corner",
+      "rating_value": "4.8",
+      "rating_count": "180"
+    }
+  ]
+}
+
