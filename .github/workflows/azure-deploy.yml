@@ -17,6 +17,20 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
+    - name: Debug - Check secrets
+      run: |
+        echo "Checking if secrets exist..."
+        if [ -z "$AZURE_CLIENT_ID" ]; then echo "AZURE_CLIENT_ID is missing"; exit 1; fi
+        if [ -z "$AZURE_TENANT_ID" ]; then echo "AZURE_TENANT_ID is missing"; exit 1; fi
+        if [ -z "$AZURE_SUBSCRIPTION_ID" ]; then echo "AZURE_SUBSCRIPTION_ID is missing"; exit 1; fi
+        if [ -z "$AZURE_WEBAPP_NAME" ]; then echo "AZURE_WEBAPP_NAME is missing"; exit 1; fi
+        echo "All secrets are present!"
+      env:
+        AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+        AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        AZURE_WEBAPP_NAME: ${{ secrets.AZURE_WEBAPP_NAME }}
+
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
