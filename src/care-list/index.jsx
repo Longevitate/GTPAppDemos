@@ -9,28 +9,88 @@ function App() {
   useEffect(() => {
     console.log('[Care Widget] Initializing...');
     console.log('[Care Widget] window.__WIDGET_DATA__:', window.__WIDGET_DATA__);
-    console.log('[Care Widget] Fallback locations.json:', locationsData);
+    console.log('[Care Widget] window.location.search:', window.location.search);
+    console.log('[Care Widget] window.location.href:', window.location.href);
     
-    // Check if data is already available on window
+    let dataLoaded = false;
+    
+    // Method 0: Check URL parameters
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const dataParam = urlParams.get('data');
+      if (dataParam) {
+        console.log('[Care Widget] Found data in URL params');
+        const decoded = atob(dataParam);
+        const parsedData = JSON.parse(decoded);
+        if (parsedData.locations) {
+          console.log(`[Care Widget] Using ${parsedData.locations.length} locations from URL params`);
+          setLocations(parsedData.locations);
+          dataLoaded = true;
+        }
+      }
+    } catch (e) {
+      console.log('[Care Widget] Error parsing URL params:', e);
+    }
+    
+    // Method 1: Check if data is already available on window
     const serverData = window.__WIDGET_DATA__ || window.__INITIAL_DATA__ || {};
     if (serverData.locations && serverData.locations.length > 0) {
       console.log(`[Care Widget] Using ${serverData.locations.length} locations from server data`);
       console.log('[Care Widget] First location:', serverData.locations[0].name, '@', serverData.locations[0].distance, 'mi');
       setLocations(serverData.locations);
-    } else {
-      console.log('[Care Widget] No server data found, using fallback locations.json');
-      setLocations(locationsData?.locations || []);
+      dataLoaded = true;
     }
     
-    // Listen for data from MCP/ChatGPT
+    // Method 2: Listen for data from MCP/ChatGPT via postMessage
     const handleMessage = (event) => {
-      if (event.data && event.data.locations) {
-        console.log(`[Care Widget] Received ${event.data.locations.length} locations via postMessage`);
-        setLocations(event.data.locations);
+      console.log('[Care Widget] Received postMessage:', event);
+      
+      // Handle different message formats
+      if (event.data) {
+        // Direct locations array
+        if (event.data.locations && Array.isArray(event.data.locations)) {
+          console.log(`[Care Widget] Received ${event.data.locations.length} locations via postMessage`);
+          console.log('[Care Widget] First location:', event.data.locations[0]?.name, '@', event.data.locations[0]?.distance, 'mi');
+          setLocations(event.data.locations);
+          dataLoaded = true;
+        }
+        // Wrapped in structuredContent
+        else if (event.data.structuredContent?.locations) {
+          console.log(`[Care Widget] Received ${event.data.structuredContent.locations.length} locations via structuredContent`);
+          setLocations(event.data.structuredContent.locations);
+          dataLoaded = true;
+        }
+        // Check for widget-props message
+        else if (event.data.type === 'widget-props' && event.data.props?.locations) {
+          console.log(`[Care Widget] Received ${event.data.props.locations.length} locations via widget-props`);
+          setLocations(event.data.props.locations);
+          dataLoaded = true;
+        }
+        // Check for widget-data message from parent
+        else if (event.data.type === 'widget-data' && event.data.locations) {
+          console.log(`[Care Widget] Received ${event.data.locations.length} locations via widget-data message`);
+          console.log('[Care Widget] First location:', event.data.locations[0]?.name, '@', event.data.locations[0]?.distance, 'mi');
+          setLocations(event.data.locations);
+          dataLoaded = true;
+        }
       }
     };
     
     window.addEventListener('message', handleMessage);
+    
+    // Request data from parent if we haven't loaded any yet
+    if (!dataLoaded) {
+      console.log('[Care Widget] No initial data, requesting from parent...');
+      window.parent.postMessage({ type: 'widget-ready', request: 'data' }, '*');
+      
+      // Also set fallback after a short delay if no data received
+      setTimeout(() => {
+        if (!dataLoaded) {
+          console.log('[Care Widget] No server data received, using fallback locations.json');
+          setLocations(locationsData?.locations || []);
+        }
+      }, 1000);
+    }
     
     return () => window.removeEventListener('message', handleMessage);
   }, []);

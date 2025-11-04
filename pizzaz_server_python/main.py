@@ -213,15 +213,15 @@ class CareLocationInput(BaseModel):
     """Schema for care location tools."""
 
     reason: str | None = Field(
-        default=None,
+        default="",
         description="Reason for seeking care (optional).",
     )
     location: str | None = Field(
-        default=None,
+        default="",
         description="User location or ZIP code (optional).",
     )
 
-    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
 
 mcp = FastMCP(
@@ -400,7 +400,7 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
         
         # Process location parameter
         user_coords = None
-        if payload.location:
+        if payload.location and payload.location.strip():
             user_coords = zip_to_coords(payload.location)
             if user_coords:
                 print(f"Geocoded ZIP {payload.location} to coords: {user_coords}")
@@ -503,36 +503,47 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
         
         structured_content = {"pizzaTopping": payload.pizza_topping}
 
-    # For care-locations, inject the data into the HTML
+    # For care-locations, try to pass data via URL parameters
     if widget.identifier == "care-locations" and "locations" in structured_content:
         import json
-        print(f"Injecting {len(structured_content.get('locations', []))} locations into widget HTML")
+        import base64
+        print(f"Encoding {len(structured_content.get('locations', []))} locations for widget")
         if structured_content.get('locations'):
             print(f"First location: {structured_content['locations'][0].get('name')} @ {structured_content['locations'][0].get('distance')} mi")
-        # Inject data as both a script in head AND body for redundancy
+        
+        # Encode data as base64 to pass via URL
         data_json = json.dumps(structured_content)
-        data_script_head = f"""
+        data_b64 = base64.b64encode(data_json.encode('utf-8')).decode('utf-8')
+        
+        # Modify widget URI to include data
+        widget_uri_with_data = f"{widget.template_uri}?data={data_b64[:500]}"  # Limit length
+        print(f"Widget URI with data (first 100 chars): {widget_uri_with_data[:100]}...")
+        
+        # Also inject into HTML as backup
+        data_script = f"""
         <script>
         window.__WIDGET_DATA__ = {data_json};
-        console.log('[Server] Widget data injected in HEAD:', window.__WIDGET_DATA__);
+        console.log('[Server] Widget data injected:', window.__WIDGET_DATA__);
+        
+        // Also listen for ready message from widget
+        window.addEventListener('message', function(event) {{
+            if (event.data && event.data.type === 'widget-ready') {{
+                console.log('[Server] Widget ready, sending data...');
+                event.source.postMessage({{
+                    type: 'widget-data',
+                    locations: window.__WIDGET_DATA__.locations
+                }}, '*');
+            }}
+        }});
         </script>
         """
-        data_script_body = f"""
-        <script>
-        if (!window.__WIDGET_DATA__) {{
-            window.__WIDGET_DATA__ = {data_json};
-            console.log('[Server] Widget data injected in BODY:', window.__WIDGET_DATA__);
-        }}
-        </script>
-        """
-        modified_html = widget.html.replace("</head>", f"{data_script_head}</head>")
-        modified_html = modified_html.replace("</body>", f"{data_script_body}</body>")
+        modified_html = widget.html.replace("</head>", f"{data_script}</head>")
         
         # Create a modified widget resource with injected data
         widget_resource = types.EmbeddedResource(
             type="resource",
             resource=types.TextResourceContents(
-                uri=widget.template_uri,
+                uri=widget_uri_with_data,
                 mimeType=MIME_TYPE,
                 text=modified_html,
                 title=widget.title,
