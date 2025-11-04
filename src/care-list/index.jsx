@@ -11,41 +11,71 @@ function App() {
     console.log('[Care Widget] window.location.search:', window.location.search);
     console.log('[Care Widget] window.location.href:', window.location.href);
     
-    // Check for session ID in URL parameters
-    const urlParams = new URLSearchParams(window.location.search);
-    const sessionId = urlParams.get('session');
+    // Try multiple methods to get session ID
+    let sessionId = null;
     
-    if (sessionId) {
-      console.log(`[Care Widget] Found session ID: ${sessionId}`);
-      console.log('[Care Widget] Fetching data from API...');
-      
-      // Fetch data from API endpoint
-      fetch(`/api/widget-data/${sessionId}`)
-        .then(response => {
-          if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-          }
-          return response.json();
-        })
-        .then(data => {
-          if (data.locations && data.locations.length > 0) {
-            console.log(`[Care Widget] ✅ Fetched ${data.locations.length} locations from API`);
-            console.log('[Care Widget] First location:', data.locations[0].name, '@', data.locations[0].distance, 'mi');
-            setLocations(data.locations);
-          } else {
-            console.log('[Care Widget] ⚠️ API returned no locations, using fallback');
-            setLocations(locationsData?.locations || []);
-          }
-        })
-        .catch(err => {
-          console.error('[Care Widget] ❌ Failed to fetch data from API:', err);
-          console.log('[Care Widget] Using fallback locations.json');
-          setLocations(locationsData?.locations || []);
-        });
-    } else {
-      console.log('[Care Widget] No session ID in URL, using fallback locations.json');
-      setLocations(locationsData?.locations || []);
+    // Method 1: Check meta tag (injected by server)
+    const metaTag = document.querySelector('meta[name="session-id"]');
+    if (metaTag) {
+      sessionId = metaTag.getAttribute('content');
+      console.log(`[Care Widget] ✅ Found session ID in meta tag: ${sessionId}`);
     }
+    
+    // Method 2: Check URL parameter (might be stripped by ChatGPT sandbox)
+    if (!sessionId) {
+      const urlParams = new URLSearchParams(window.location.search);
+      sessionId = urlParams.get('session');
+      if (sessionId) {
+        console.log(`[Care Widget] ✅ Found session ID in URL param: ${sessionId}`);
+      }
+    }
+    
+    // Method 3: Fallback - use 'latest' for single-user scenarios
+    if (!sessionId) {
+      console.log('[Care Widget] ⚠️ No session ID found, falling back to newest data');
+      sessionId = 'latest';
+    }
+    
+    // Determine API server URL
+    // Widget is sandboxed, so use relative URLs (ChatGPT should proxy them)
+    let serverUrl = '';
+    
+    const sandboxMatch = window.location.hostname.match(/^connector_([a-f0-9]+)\.web-sandbox/);
+    if (sandboxMatch) {
+      console.log('[Care Widget] Detected sandbox environment');
+    }
+    
+    console.log(`[Care Widget] Using session ID: ${sessionId}`);
+    console.log('[Care Widget] Fetching data from API...');
+    
+    // Fetch data from API endpoint
+    const apiUrl = `${serverUrl}/api/widget-data/${sessionId}`;
+    console.log(`[Care Widget] Fetching from: ${apiUrl}`);
+    
+    fetch(apiUrl)
+      .then(response => {
+        console.log(`[Care Widget] API response status: ${response.status}`);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        return response.json();
+      })
+      .then(data => {
+        if (data.locations && data.locations.length > 0) {
+          console.log(`[Care Widget] ✅ Fetched ${data.locations.length} locations from API`);
+          console.log('[Care Widget] First location:', data.locations[0].name, '@', data.locations[0].distance, 'mi');
+          setLocations(data.locations);
+        } else {
+          console.log('[Care Widget] ⚠️ API returned no locations, using fallback');
+          setLocations(locationsData?.locations || []);
+        }
+      })
+      .catch(err => {
+        console.error('[Care Widget] ❌ Failed to fetch data from API:', err);
+        console.log('[Care Widget] Error details:', err.message);
+        console.log('[Care Widget] Using fallback locations.json');
+        setLocations(locationsData?.locations || []);
+      });
   }, []);
 
   return (

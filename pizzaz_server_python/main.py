@@ -231,15 +231,16 @@ class CareLocationInput(BaseModel):
 # In production, use Redis or similar
 widget_sessions: Dict[str, Dict[str, Any]] = {}
 
-def store_widget_data(data: dict, ttl_minutes: int = 15) -> str:
+def store_widget_data(data: dict, session_id: str = None, ttl_minutes: int = 15) -> str:
     """Store widget data with a session ID and expiration time."""
-    session_id = str(uuid.uuid4())
+    if not session_id:
+        session_id = str(uuid.uuid4())
     expires = datetime.now() + timedelta(minutes=ttl_minutes)
     widget_sessions[session_id] = {
         "data": data,
         "expires": expires
     }
-    print(f"[Session] Created session {session_id} with {len(data.get('locations', []))} locations, expires in {ttl_minutes} min")
+    print(f"[Session] Stored session {session_id} with {len(data.get('locations', []))} locations, expires in {ttl_minutes} min")
     return session_id
 
 def get_widget_data(session_id: str) -> Optional[dict]:
@@ -553,21 +554,30 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
         if structured_content.get('locations'):
             print(f"First location: {structured_content['locations'][0].get('name')} @ {structured_content['locations'][0].get('distance')} mi")
         
-        # Store data with a session ID
-        session_id = store_widget_data(structured_content)
+        # Generate unique session ID for this request
+        session_id = str(uuid.uuid4())
+        store_widget_data(structured_content, session_id=session_id, ttl_minutes=10)
+        print(f"[Session] Data stored with key: {session_id}")
         
-        # Modify widget URI to include session ID
+        # Inject session ID into HTML via meta tag (ChatGPT might preserve this)
+        modified_html = widget.html.replace(
+            '<head>',
+            f'<head>\n<meta name="session-id" content="{session_id}">'
+        )
+        
+        # Also try URL param (might be stripped but worth trying)
         widget_uri_with_session = f"{widget.template_uri}?session={session_id}"
-        widget_uri_for_template = widget_uri_with_session  # Use session URI for template
-        print(f"Widget URI with session: {widget_uri_with_session}")
+        widget_uri_for_template = widget_uri_with_session
+        print(f"Widget URI: {widget_uri_with_session}")
+        print(f"[Session] Injected session ID into HTML meta tag")
         
-        # Create widget resource with session ID in URI
+        # Create widget resource with modified HTML
         widget_resource = types.EmbeddedResource(
             type="resource",
             resource=types.TextResourceContents(
                 uri=widget_uri_with_session,
                 mimeType=MIME_TYPE,
-                text=widget.html,  # Use original HTML, widget will fetch data via API
+                text=modified_html,  # Use HTML with injected meta tag
                 title=widget.title,
             ),
         )
@@ -614,6 +624,29 @@ async def get_widget_data_endpoint(request):
     # Cleanup expired sessions periodically
     cleanup_expired_sessions()
     
+    # Special case: "latest" returns the most recent session
+    if session_id == "latest":
+        print("[API] Request for 'latest' session")
+        if widget_sessions:
+            # Find the newest non-expired session
+            now = datetime.now()
+            valid_sessions = [
+                (sid, sess) for sid, sess in widget_sessions.items()
+                if sess["expires"] > now
+            ]
+            if valid_sessions:
+                # Sort by expiration time (most recent first)
+                latest_sid, latest_sess = max(valid_sessions, key=lambda x: x[1]["expires"])
+                data = latest_sess["data"]
+                print(f"[API] Serving latest session {latest_sid} with {len(data.get('locations', []))} locations")
+                return JSONResponse(data)
+        print("[API] No valid sessions found")
+        return JSONResponse(
+            {"error": "No sessions available", "locations": []},
+            status_code=404
+        )
+    
+    # Normal session lookup
     data = get_widget_data(session_id)
     if data:
         print(f"[API] Serving {len(data.get('locations', []))} locations for session {session_id}")
