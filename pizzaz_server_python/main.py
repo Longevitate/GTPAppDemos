@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List
+import math
+import httpx
 
 import mcp.types as types
 from mcp.server.fastmcp import FastMCP
@@ -109,6 +111,70 @@ WIDGETS_BY_ID: Dict[str, PizzazWidget] = {
 WIDGETS_BY_URI: Dict[str, PizzazWidget] = {
     widget.template_uri: widget for widget in widgets
 }
+
+
+# ZIP code to lat/lon lookup for common WA, OR, CA areas
+ZIP_TO_COORDS: Dict[str, tuple[float, float]] = {
+    # Washington
+    "98229": (48.7519, -122.4787),  # Bellingham
+    "98101": (47.6080, -122.3350),  # Seattle Downtown
+    "98112": (47.6239, -122.3190),  # Seattle Capitol Hill
+    "98004": (47.6214, -122.2079),  # Bellevue
+    "98201": (47.9790, -122.2021),  # Everett
+    "98516": (47.0379, -122.8132),  # Lacey/Olympia
+    "99201": (47.6588, -117.4260),  # Spokane
+    # Oregon
+    "97203": (45.5898, -122.7375),  # Portland North
+    "97211": (45.5698, -122.6501),  # Portland NE
+    "97086": (45.4312, -122.7637),  # Happy Valley
+    "97013": (45.2629, -122.6774),  # Canby
+    "97301": (44.9429, -123.0351),  # Salem
+    "97401": (44.0521, -123.0868),  # Eugene
+    # California
+    "92868": (33.7879, -117.8531),  # Orange
+    "92629": (33.6095, -117.7288),  # Dana Point
+    "92677": (33.5272, -117.7132),  # Laguna Niguel
+    "90001": (33.9731, -118.2479),  # Los Angeles
+    "94102": (37.7799, -122.4193),  # San Francisco
+}
+
+
+def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Calculate the great circle distance in miles between two points on Earth."""
+    # Convert to radians
+    lat1_rad, lon1_rad = math.radians(lat1), math.radians(lon1)
+    lat2_rad, lon2_rad = math.radians(lat2), math.radians(lon2)
+    
+    # Haversine formula
+    dlat = lat2_rad - lat1_rad
+    dlon = lon2_rad - lon1_rad
+    a = math.sin(dlat / 2) ** 2 + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon / 2) ** 2
+    c = 2 * math.asin(math.sqrt(a))
+    
+    # Radius of Earth in miles
+    radius_miles = 3959.0
+    return c * radius_miles
+
+
+def zip_to_coords(zip_code: str) -> tuple[float, float] | None:
+    """Convert a ZIP code to lat/lon coordinates."""
+    # Clean the ZIP code (remove any extra characters)
+    clean_zip = zip_code.strip().split('-')[0][:5]
+    return ZIP_TO_COORDS.get(clean_zip)
+
+
+async def fetch_providence_locations() -> List[Dict[str, Any]]:
+    """Fetch all Providence care locations from the API."""
+    url = "https://providencekyruus.azurewebsites.net/api/searchlocationsbyservices"
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+            data = response.json()
+            return data.get("locations", [])
+    except Exception as e:
+        print(f"Error fetching Providence locations: {e}")
+        return []
 
 
 class PizzaInput(BaseModel):
@@ -309,9 +375,75 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                 )
             )
         
+        # Fetch all locations from Providence API
+        all_locations = await fetch_providence_locations()
+        
+        # Process location parameter
+        user_coords = None
+        if payload.location:
+            user_coords = zip_to_coords(payload.location)
+        
+        # If we have user coordinates, calculate distances and sort
+        processed_locations = []
+        if user_coords and all_locations:
+            user_lat, user_lon = user_coords
+            
+            for loc in all_locations:
+                coords = loc.get("coordinates")
+                if coords and coords.get("lat") and coords.get("lng"):
+                    distance = haversine_distance(
+                        user_lat, user_lon,
+                        coords["lat"], coords["lng"]
+                    )
+                    
+                    # Create a simplified location object
+                    processed_loc = {
+                        "id": loc.get("id"),
+                        "name": loc.get("name"),
+                        "address_plain": loc.get("address_plain"),
+                        "coordinates": coords,
+                        "distance": round(distance, 1),
+                        "image": loc.get("image"),
+                        "phone": loc.get("phone"),
+                        "url": loc.get("url"),
+                        "rating_value": loc.get("rating_value"),
+                        "rating_count": loc.get("rating_count"),
+                        "hours_today": loc.get("hours_today"),
+                        "is_express_care": loc.get("is_express_care"),
+                        "is_urgent_care": loc.get("is_urgent_care"),
+                    }
+                    processed_locations.append(processed_loc)
+            
+            # Sort by distance
+            processed_locations.sort(key=lambda x: x["distance"])
+            
+            # Take top 7 closest
+            processed_locations = processed_locations[:7]
+        else:
+            # No location provided or couldn't geocode - use first 7 locations as-is
+            for loc in all_locations[:7]:
+                processed_loc = {
+                    "id": loc.get("id"),
+                    "name": loc.get("name"),
+                    "address_plain": loc.get("address_plain"),
+                    "coordinates": loc.get("coordinates"),
+                    "distance": None,
+                    "image": loc.get("image"),
+                    "phone": loc.get("phone"),
+                    "url": loc.get("url"),
+                    "rating_value": loc.get("rating_value"),
+                    "rating_count": loc.get("rating_count"),
+                    "hours_today": loc.get("hours_today"),
+                    "is_express_care": loc.get("is_express_care"),
+                    "is_urgent_care": loc.get("is_urgent_care"),
+                }
+                processed_locations.append(processed_loc)
+        
         structured_content = {
             "reason": payload.reason or "general care",
             "location": payload.location or "unspecified",
+            "user_coords": user_coords,
+            "locations": processed_locations,
         }
     else:
         # Handle pizza tools
@@ -332,7 +464,29 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
         
         structured_content = {"pizzaTopping": payload.pizza_topping}
 
-    widget_resource = _embedded_widget_resource(widget)
+    # For care-locations, inject the data into the HTML
+    if widget.identifier == "care-locations" and "locations" in structured_content:
+        import json
+        data_script = f"""
+        <script>
+        window.__WIDGET_DATA__ = {json.dumps(structured_content)};
+        </script>
+        """
+        modified_html = widget.html.replace("</head>", f"{data_script}</head>")
+        
+        # Create a modified widget resource with injected data
+        widget_resource = types.EmbeddedResource(
+            type="resource",
+            resource=types.TextResourceContents(
+                uri=widget.template_uri,
+                mimeType=MIME_TYPE,
+                text=modified_html,
+                title=widget.title,
+            ),
+        )
+    else:
+        widget_resource = _embedded_widget_resource(widget)
+    
     meta: Dict[str, Any] = {
         "openai.com/widget": widget_resource.model_dump(mode="json"),
         "openai/outputTemplate": widget.template_uri,

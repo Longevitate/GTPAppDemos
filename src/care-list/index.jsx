@@ -1,10 +1,29 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import locationsData from "./locations.json";
-import { MapPin, Star, Clock } from "lucide-react";
+import { MapPin, Star, Clock, Navigation } from "lucide-react";
 
 function App() {
-  const locations = locationsData?.locations || [];
+  const [locations, setLocations] = useState(locationsData?.locations || []);
+  
+  useEffect(() => {
+    // Listen for data from MCP/ChatGPT
+    const handleMessage = (event) => {
+      if (event.data && event.data.locations) {
+        setLocations(event.data.locations);
+      }
+    };
+    
+    window.addEventListener('message', handleMessage);
+    
+    // Check if data is already available on window
+    const serverData = window.__WIDGET_DATA__ || window.__INITIAL_DATA__ || {};
+    if (serverData.locations && serverData.locations.length > 0) {
+      setLocations(serverData.locations);
+    }
+    
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
 
   return (
     <div className="antialiased w-full text-black px-4 pb-2 border border-black/10 rounded-2xl sm:rounded-3xl overflow-hidden bg-white">
@@ -69,6 +88,17 @@ function App() {
                         {location.name}
                       </div>
                       <div className="mt-1 sm:mt-0.25 flex items-center gap-3 text-black/70 text-sm">
+                        {location.distance !== undefined && location.distance !== null && (
+                          <div className="flex items-center gap-1">
+                            <Navigation
+                              strokeWidth={1.5}
+                              className="h-3 w-3 text-blue-600"
+                            />
+                            <span className="text-xs font-medium text-blue-600">
+                              {location.distance} mi
+                            </span>
+                          </div>
+                        )}
                         {location.rating_value && (
                           <div className="flex items-center gap-1">
                             <Star
