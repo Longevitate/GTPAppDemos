@@ -3,11 +3,15 @@ import { createRoot } from "react-dom/client";
 import locationsData from "./locations.json";
 import { MapPin, Star, Clock, Navigation } from "lucide-react";
 
+// Widget version for cache busting
+const WIDGET_VERSION = "2.0.0-stateless";
+
 function App() {
   const [locations, setLocations] = useState([]);
   
   useEffect(() => {
-    console.log('[Care Widget] Initializing...');
+    // Stateless architecture v2 - arguments via meta tags
+    console.log(`[Care Widget v${WIDGET_VERSION}] Initializing...`);
     console.log('[Care Widget] window.location.search:', window.location.search);
     console.log('[Care Widget] window.location.href:', window.location.href);
     
