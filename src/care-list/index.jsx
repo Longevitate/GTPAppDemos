@@ -13,22 +13,47 @@ function App() {
     // Use official window.openai.toolOutput API!
     console.log(`[Care Widget v${WIDGET_VERSION}] Initializing...`);
     console.log('[Care Widget] window.openai:', window.openai);
-    console.log('[Care Widget] window.openai?.toolOutput:', window.openai?.toolOutput);
     
-    // Get structured content from official API
-    const toolOutput = window.openai?.toolOutput;
-    
-    if (toolOutput && toolOutput.locations && toolOutput.locations.length > 0) {
-      console.log(`[Care Widget] ✅ Received ${toolOutput.locations.length} locations from toolOutput`);
-      console.log('[Care Widget] First location:', toolOutput.locations[0].name, '@', toolOutput.locations[0].distance, 'mi');
-      console.log('[Care Widget] User location:', toolOutput.location);
-      console.log('[Care Widget] User coords:', toolOutput.user_coords);
-      setLocations(toolOutput.locations);
-    } else {
-      console.log('[Care Widget] ⚠️ No toolOutput or locations found, using fallback');
-      console.log('[Care Widget] toolOutput value:', JSON.stringify(toolOutput));
-      setLocations(locationsData?.locations || []);
+    // Log all available properties on window.openai
+    if (window.openai) {
+      console.log('[Care Widget] window.openai properties:', Object.keys(window.openai));
+      console.log('[Care Widget] window.openai.toolOutput:', window.openai.toolOutput);
     }
+    
+    // Function to check and load data
+    const loadData = () => {
+      const toolOutput = window.openai?.toolOutput;
+      
+      if (toolOutput && toolOutput.locations && toolOutput.locations.length > 0) {
+        console.log(`[Care Widget] ✅ Received ${toolOutput.locations.length} locations from toolOutput`);
+        console.log('[Care Widget] First location:', toolOutput.locations[0].name, '@', toolOutput.locations[0].distance, 'mi');
+        console.log('[Care Widget] User location:', toolOutput.location);
+        console.log('[Care Widget] User coords:', toolOutput.user_coords);
+        setLocations(toolOutput.locations);
+        return true;
+      }
+      return false;
+    };
+    
+    // Try immediately
+    if (loadData()) {
+      console.log('[Care Widget] Data loaded immediately');
+      return;
+    }
+    
+    // If not available, wait a bit and try again (toolOutput might be set asynchronously)
+    console.log('[Care Widget] ⚠️ toolOutput not available yet, waiting...');
+    const timeoutId = setTimeout(() => {
+      if (loadData()) {
+        console.log('[Care Widget] Data loaded after delay');
+      } else {
+        console.log('[Care Widget] ⚠️ No toolOutput after waiting, using fallback');
+        console.log('[Care Widget] toolOutput value:', window.openai?.toolOutput);
+        setLocations(locationsData?.locations || []);
+      }
+    }, 500);
+    
+    return () => clearTimeout(timeoutId);
   }, []);
 
   return (
