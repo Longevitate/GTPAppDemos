@@ -18,6 +18,7 @@ from typing import Any, Dict, List
 import mcp.types as types
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from starlette.staticfiles import StaticFiles
 
 
 @dataclass(frozen=True)
@@ -291,6 +292,9 @@ mcp._mcp_server.request_handlers[types.ReadResourceRequest] = _handle_read_resou
 
 
 app = mcp.streamable_http_app()
+
+# Mount static files for widget assets
+app.mount("/assets", StaticFiles(directory=str(ASSETS_DIR)), name="assets")
 
 try:
     from starlette.middleware.cors import CORSMiddleware

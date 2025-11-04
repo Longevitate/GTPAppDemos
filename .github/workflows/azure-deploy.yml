@@ -58,7 +58,7 @@ jobs:
         push: true
         tags: ${{ env.IMAGE_NAME }}
         build-args: |
-          BASE_URL=https://provgpt.azurewebsites.net
+          BASE_URL=https://provgpt.azurewebsites.net/assets
 
     - name: Deploy to Azure Web App
       uses: azure/webapps-deploy@v3
