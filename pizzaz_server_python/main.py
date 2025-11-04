@@ -88,6 +88,15 @@ widgets: List[PizzazWidget] = [
         html=_load_widget_html("pizzaz-list"),
         response_text="Rendered a pizza list!",
     ),
+    PizzazWidget(
+        identifier="care-locations",
+        title="Show Care Locations",
+        template_uri="ui://widget/care-list.html",
+        invoking="Finding care locations",
+        invoked="Found care locations",
+        html=_load_widget_html("care-list"),
+        response_text="Showing Providence care locations!",
+    ),
 ]
 
 
@@ -114,6 +123,21 @@ class PizzaInput(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
 
+class CareLocationInput(BaseModel):
+    """Schema for care location tools."""
+
+    reason: str | None = Field(
+        default=None,
+        description="Reason for seeking care (optional).",
+    )
+    location: str | None = Field(
+        default=None,
+        description="User location or ZIP code (optional).",
+    )
+
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+
 mcp = FastMCP(
     name="pizzaz-python",
     stateless_http=True,
@@ -129,6 +153,22 @@ TOOL_INPUT_SCHEMA: Dict[str, Any] = {
         }
     },
     "required": ["pizzaTopping"],
+    "additionalProperties": False,
+}
+
+CARE_LOCATION_INPUT_SCHEMA: Dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "reason": {
+            "type": "string",
+            "description": "Reason for seeking care (optional).",
+        },
+        "location": {
+            "type": "string",
+            "description": "User location or ZIP code (optional).",
+        }
+    },
+    "required": [],
     "additionalProperties": False,
 }
 
@@ -166,7 +206,11 @@ async def _list_tools() -> List[types.Tool]:
             name=widget.identifier,
             title=widget.title,
             description=widget.title,
-            inputSchema=deepcopy(TOOL_INPUT_SCHEMA),
+            inputSchema=deepcopy(
+                CARE_LOCATION_INPUT_SCHEMA 
+                if widget.identifier == "care-locations" 
+                else TOOL_INPUT_SCHEMA
+            ),
             _meta=_tool_meta(widget),
             # To disable the approval prompt for the tools
             annotations={
@@ -247,22 +291,47 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
         )
 
     arguments = req.params.arguments or {}
-    try:
-        payload = PizzaInput.model_validate(arguments)
-    except ValidationError as exc:
-        return types.ServerResult(
-            types.CallToolResult(
-                content=[
-                    types.TextContent(
-                        type="text",
-                        text=f"Input validation error: {exc.errors()}",
-                    )
-                ],
-                isError=True,
+    
+    # Handle care-locations tool differently
+    if widget.identifier == "care-locations":
+        try:
+            payload = CareLocationInput.model_validate(arguments)
+        except ValidationError as exc:
+            return types.ServerResult(
+                types.CallToolResult(
+                    content=[
+                        types.TextContent(
+                            type="text",
+                            text=f"Input validation error: {exc.errors()}",
+                        )
+                    ],
+                    isError=True,
+                )
             )
-        )
+        
+        structured_content = {
+            "reason": payload.reason or "general care",
+            "location": payload.location or "unspecified",
+        }
+    else:
+        # Handle pizza tools
+        try:
+            payload = PizzaInput.model_validate(arguments)
+        except ValidationError as exc:
+            return types.ServerResult(
+                types.CallToolResult(
+                    content=[
+                        types.TextContent(
+                            type="text",
+                            text=f"Input validation error: {exc.errors()}",
+                        )
+                    ],
+                    isError=True,
+                )
+            )
+        
+        structured_content = {"pizzaTopping": payload.pizza_topping}
 
-    topping = payload.pizza_topping
     widget_resource = _embedded_widget_resource(widget)
     meta: Dict[str, Any] = {
         "openai.com/widget": widget_resource.model_dump(mode="json"),
@@ -281,7 +350,7 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                     text=widget.response_text,
                 )
             ],
-            structuredContent={"pizzaTopping": topping},
+            structuredContent=structured_content,
             _meta=meta,
         )
     )
