@@ -89,17 +89,6 @@ function App() {
                         {location.name}
                       </div>
                       <div className="mt-1 sm:mt-0.25 flex items-center gap-3 text-black/70 text-sm">
-                        {location.distance !== undefined && location.distance !== null && (
-                          <div className="flex items-center gap-1">
-                            <Navigation
-                              strokeWidth={1.5}
-                              className="h-3 w-3 text-blue-600"
-                            />
-                            <span className="text-xs font-medium text-blue-600">
-                              {location.distance} mi
-                            </span>
-                          </div>
-                        )}
                         {location.rating_value && (
                           <div className="flex items-center gap-1">
                             <Star
