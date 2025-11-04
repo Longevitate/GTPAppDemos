@@ -44,18 +44,20 @@ jobs:
 
     - name: Build Docker image
       run: |
-        docker build -t ghcr.io/${{ github.repository }}/openai-apps-sdk:latest .
+        REPO_NAME=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+        docker build -t ghcr.io/$REPO_NAME/openai-apps-sdk:latest .
 
     - name: Push Docker image
       run: |
-        docker push ghcr.io/${{ github.repository }}/openai-apps-sdk:latest
+        REPO_NAME=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+        docker push ghcr.io/$REPO_NAME/openai-apps-sdk:latest
 
     - name: Deploy to Azure Web App
       uses: azure/webapps-deploy@v3
       with:
         app-name: ${{ secrets.AZURE_WEBAPP_NAME }}
         slot-name: production
-        images: 'ghcr.io/${{ github.repository }}/openai-apps-sdk:latest'
+        images: 'ghcr.io/$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')/openai-apps-sdk:latest'
 
     - name: Azure logout
       run: az logout
