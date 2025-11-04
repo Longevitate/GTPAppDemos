@@ -15,6 +15,17 @@ function App() {
     console.log('[Care Widget] window.location.search:', window.location.search);
     console.log('[Care Widget] window.location.href:', window.location.href);
     
+    // Debug: List ALL meta tags
+    const allMetas = document.querySelectorAll('meta');
+    console.log(`[Care Widget] Found ${allMetas.length} meta tags in document:`);
+    allMetas.forEach(meta => {
+      const name = meta.getAttribute('name');
+      const content = meta.getAttribute('content');
+      if (name) {
+        console.log(`  - ${name}: ${content}`);
+      }
+    });
+    
     // Read arguments from meta tags (injected by server)
     const locationMeta = document.querySelector('meta[name="care-location"]');
     const reasonMeta = document.querySelector('meta[name="care-reason"]');
@@ -22,9 +33,9 @@ function App() {
     const location = locationMeta?.getAttribute('content') || '';
     const reason = reasonMeta?.getAttribute('content') || '';
     
-    console.log(`[Care Widget] Arguments from meta tags:`);
-    console.log(`  - location: ${location || '(none)'}`);
-    console.log(`  - reason: ${reason || '(none)'}`);
+    console.log(`[Care Widget] Target arguments from meta tags:`);
+    console.log(`  - location: "${location}" (found: ${!!locationMeta})`);
+    console.log(`  - reason: "${reason}" (found: ${!!reasonMeta})`);
     
     // Detect sandbox environment
     const sandboxMatch = window.location.hostname.match(/^connector_([a-f0-9]+)\.web-sandbox/);

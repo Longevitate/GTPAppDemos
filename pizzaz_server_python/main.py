@@ -524,16 +524,25 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
         # Inject arguments as meta tags so widget can call API
         meta_tags = []
         if user_location:
-            meta_tags.append(f'<meta name="care-location" content="{user_location}">')
+            tag = f'<meta name="care-location" content="{user_location}">'
+            meta_tags.append(tag)
+            print(f"[Widget] Adding meta tag: {tag}")
         if user_reason:
-            meta_tags.append(f'<meta name="care-reason" content="{user_reason}">')
+            tag = f'<meta name="care-reason" content="{user_reason}">'
+            meta_tags.append(tag)
+            print(f"[Widget] Adding meta tag: {tag}")
         
-        modified_html = widget.html.replace(
-            '<head>',
-            f'<head>\n{chr(10).join(meta_tags)}'
-        )
-        
-        print(f"[Widget] Injected {len(meta_tags)} meta tags into HTML")
+        if meta_tags:
+            meta_injection = '\n'.join(meta_tags)
+            modified_html = widget.html.replace(
+                '<head>',
+                f'<head>\n{meta_injection}\n'
+            )
+            print(f"[Widget] Injected {len(meta_tags)} meta tags into HTML")
+            print(f"[Widget] Modified HTML head preview: {modified_html[:500]}")
+        else:
+            modified_html = widget.html
+            print(f"[Widget] No meta tags to inject (location and reason both empty)")
         
         # Create widget resource with modified HTML
         widget_resource = types.EmbeddedResource(
