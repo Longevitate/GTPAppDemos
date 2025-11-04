@@ -10,72 +10,25 @@ function App() {
   const [locations, setLocations] = useState([]);
   
   useEffect(() => {
-    // Stateless architecture v2 - arguments via meta tags
+    // Use official window.openai.toolOutput API!
     console.log(`[Care Widget v${WIDGET_VERSION}] Initializing...`);
-    console.log('[Care Widget] window.location.search:', window.location.search);
-    console.log('[Care Widget] window.location.href:', window.location.href);
+    console.log('[Care Widget] window.openai:', window.openai);
+    console.log('[Care Widget] window.openai?.toolOutput:', window.openai?.toolOutput);
     
-    // Debug: List ALL meta tags
-    const allMetas = document.querySelectorAll('meta');
-    console.log(`[Care Widget] Found ${allMetas.length} meta tags in document:`);
-    allMetas.forEach(meta => {
-      const name = meta.getAttribute('name');
-      const content = meta.getAttribute('content');
-      if (name) {
-        console.log(`  - ${name}: ${content}`);
-      }
-    });
+    // Get structured content from official API
+    const toolOutput = window.openai?.toolOutput;
     
-    // Read arguments from meta tags (injected by server)
-    const locationMeta = document.querySelector('meta[name="care-location"]');
-    const reasonMeta = document.querySelector('meta[name="care-reason"]');
-    
-    const location = locationMeta?.getAttribute('content') || '';
-    const reason = reasonMeta?.getAttribute('content') || '';
-    
-    console.log(`[Care Widget] Target arguments from meta tags:`);
-    console.log(`  - location: "${location}" (found: ${!!locationMeta})`);
-    console.log(`  - reason: "${reason}" (found: ${!!reasonMeta})`);
-    
-    // Detect sandbox environment
-    const sandboxMatch = window.location.hostname.match(/^connector_([a-f0-9]+)\.web-sandbox/);
-    if (sandboxMatch) {
-      console.log('[Care Widget] Detected sandbox environment');
+    if (toolOutput && toolOutput.locations && toolOutput.locations.length > 0) {
+      console.log(`[Care Widget] ✅ Received ${toolOutput.locations.length} locations from toolOutput`);
+      console.log('[Care Widget] First location:', toolOutput.locations[0].name, '@', toolOutput.locations[0].distance, 'mi');
+      console.log('[Care Widget] User location:', toolOutput.location);
+      console.log('[Care Widget] User coords:', toolOutput.user_coords);
+      setLocations(toolOutput.locations);
+    } else {
+      console.log('[Care Widget] ⚠️ No toolOutput or locations found, using fallback');
+      console.log('[Care Widget] toolOutput value:', JSON.stringify(toolOutput));
+      setLocations(locationsData?.locations || []);
     }
-    
-    // Build API URL with query parameters
-    const params = new URLSearchParams();
-    if (location) params.append('location', location);
-    if (reason) params.append('reason', reason);
-    
-    const apiUrl = `/api/care-locations?${params.toString()}`;
-    console.log(`[Care Widget] Fetching from: ${apiUrl}`);
-    
-    // Fetch fresh data from stateless API
-    fetch(apiUrl)
-      .then(response => {
-        console.log(`[Care Widget] API response status: ${response.status}`);
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-        return response.json();
-      })
-      .then(data => {
-        if (data.locations && data.locations.length > 0) {
-          console.log(`[Care Widget] ✅ Fetched ${data.locations.length} locations from API`);
-          console.log('[Care Widget] First location:', data.locations[0].name, '@', data.locations[0].distance, 'mi');
-          setLocations(data.locations);
-        } else {
-          console.log('[Care Widget] ⚠️ API returned no locations, using fallback');
-          setLocations(locationsData?.locations || []);
-        }
-      })
-      .catch(err => {
-        console.error('[Care Widget] ❌ Failed to fetch data from API:', err);
-        console.log('[Care Widget] Error details:', err.message);
-        console.log('[Care Widget] Using fallback locations.json');
-        setLocations(locationsData?.locations || []);
-      });
   }, []);
 
   return (

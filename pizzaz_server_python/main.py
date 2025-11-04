@@ -509,53 +509,16 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
         
         structured_content = {"pizzaTopping": payload.pizza_topping}
 
-    # For care-locations, inject arguments as meta tags so widget can fetch fresh data
-    widget_uri_for_template = widget.template_uri  # Default to base URI
+    # For care-locations, just use the standard widget resource
+    # structuredContent is automatically passed to widget via window.openai.toolOutput
+    widget_uri_for_template = widget.template_uri
     
     if widget.identifier == "care-locations":
-        print(f"[Widget] Injecting arguments into widget HTML")
-        
-        # Get the user's location and reason from the processed data
-        user_location = structured_content.get("location", "")
-        user_reason = structured_content.get("reason", "")
-        
-        print(f"[Widget] User location: {user_location}, reason: {user_reason}")
-        
-        # Inject arguments as meta tags so widget can call API
-        meta_tags = []
-        if user_location:
-            tag = f'<meta name="care-location" content="{user_location}">'
-            meta_tags.append(tag)
-            print(f"[Widget] Adding meta tag: {tag}")
-        if user_reason:
-            tag = f'<meta name="care-reason" content="{user_reason}">'
-            meta_tags.append(tag)
-            print(f"[Widget] Adding meta tag: {tag}")
-        
-        if meta_tags:
-            meta_injection = '\n'.join(meta_tags)
-            modified_html = widget.html.replace(
-                '<head>',
-                f'<head>\n{meta_injection}\n'
-            )
-            print(f"[Widget] Injected {len(meta_tags)} meta tags into HTML")
-            print(f"[Widget] Modified HTML head preview: {modified_html[:500]}")
-        else:
-            modified_html = widget.html
-            print(f"[Widget] No meta tags to inject (location and reason both empty)")
-        
-        # Create widget resource with modified HTML
-        widget_resource = types.EmbeddedResource(
-            type="resource",
-            resource=types.TextResourceContents(
-                uri=widget.template_uri,
-                mimeType=MIME_TYPE,
-                text=modified_html,
-                title=widget.title,
-            ),
-        )
-    else:
-        widget_resource = _embedded_widget_resource(widget)
+        print(f"[Widget] Returning care-locations widget")
+        print(f"[Widget] structuredContent will be available via window.openai.toolOutput")
+        print(f"[Widget] Location: {structured_content.get('location')}, {len(structured_content.get('locations', []))} locations")
+    
+    widget_resource = _embedded_widget_resource(widget)
     
     meta: Dict[str, Any] = {
         "openai.com/widget": widget_resource.model_dump(mode="json"),
