@@ -402,10 +402,15 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
         user_coords = None
         if payload.location:
             user_coords = zip_to_coords(payload.location)
+            if user_coords:
+                print(f"Geocoded ZIP {payload.location} to coords: {user_coords}")
+            else:
+                print(f"Warning: Could not geocode ZIP {payload.location}")
         
         # If we have user coordinates, calculate distances and sort
         processed_locations = []
         if user_coords and all_locations:
+            print(f"Processing {len(all_locations)} locations for distance sorting...")
             user_lat, user_lon = user_coords
             
             for loc in all_locations:
@@ -439,6 +444,12 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
             
             # Take top 7 closest
             processed_locations = processed_locations[:7]
+            
+            # Debug: log top 3 locations
+            if processed_locations:
+                print(f"Top 3 closest locations:")
+                for loc in processed_locations[:3]:
+                    print(f"  - {loc['name']}: {loc['distance']} mi")
         else:
             # No location provided or couldn't geocode - use first 7 locations as-is
             for loc in all_locations[:7]:
@@ -487,9 +498,13 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
     # For care-locations, inject the data into the HTML
     if widget.identifier == "care-locations" and "locations" in structured_content:
         import json
+        print(f"Injecting {len(structured_content.get('locations', []))} locations into widget HTML")
+        if structured_content.get('locations'):
+            print(f"First location: {structured_content['locations'][0].get('name')} @ {structured_content['locations'][0].get('distance')} mi")
         data_script = f"""
         <script>
         window.__WIDGET_DATA__ = {json.dumps(structured_content)};
+        console.log('Widget data loaded:', window.__WIDGET_DATA__);
         </script>
         """
         modified_html = widget.html.replace("</head>", f"{data_script}</head>")

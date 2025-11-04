@@ -126,9 +126,17 @@ function App() {
                     </div>
                   </div>
                 </div>
-                <div className="hidden sm:flex items-center gap-2 text-end py-2 px-3 text-sm text-black/60 whitespace-nowrap flex-auto">
-                  <MapPin strokeWidth={1.5} className="h-4 w-4" />
-                  {location.address_plain.split(",").slice(-2).join(",")}
+                <div className="hidden sm:flex items-center gap-3 text-end py-2 px-3 text-sm whitespace-nowrap flex-auto">
+                  {location.distance !== undefined && location.distance !== null && (
+                    <div className="flex items-center gap-1 text-blue-600 font-semibold">
+                      <Navigation strokeWidth={2} className="h-4 w-4" />
+                      <span>{location.distance} mi</span>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-1 text-black/60">
+                    <MapPin strokeWidth={1.5} className="h-4 w-4" />
+                    {location.address_plain.split(",").slice(-2).join(",")}
+                  </div>
                 </div>
                 <div className="py-2 whitespace-nowrap flex justify-end">
                   <button
