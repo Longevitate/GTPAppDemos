@@ -413,7 +413,15 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
             print(f"Processing {len(all_locations)} locations for distance sorting...")
             user_lat, user_lon = user_coords
             
+            # Track seen location IDs to avoid duplicates
+            seen_ids = set()
+            
             for loc in all_locations:
+                # Skip duplicates (some locations appear multiple times in API)
+                loc_id = loc.get("id")
+                if loc_id in seen_ids:
+                    continue
+                seen_ids.add(loc_id)
                 coords = loc.get("coordinates")
                 if coords and coords.get("lat") and coords.get("lng"):
                     distance = haversine_distance(
@@ -501,13 +509,24 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
         print(f"Injecting {len(structured_content.get('locations', []))} locations into widget HTML")
         if structured_content.get('locations'):
             print(f"First location: {structured_content['locations'][0].get('name')} @ {structured_content['locations'][0].get('distance')} mi")
-        data_script = f"""
+        # Inject data as both a script in head AND body for redundancy
+        data_json = json.dumps(structured_content)
+        data_script_head = f"""
         <script>
-        window.__WIDGET_DATA__ = {json.dumps(structured_content)};
-        console.log('Widget data loaded:', window.__WIDGET_DATA__);
+        window.__WIDGET_DATA__ = {data_json};
+        console.log('[Server] Widget data injected in HEAD:', window.__WIDGET_DATA__);
         </script>
         """
-        modified_html = widget.html.replace("</head>", f"{data_script}</head>")
+        data_script_body = f"""
+        <script>
+        if (!window.__WIDGET_DATA__) {{
+            window.__WIDGET_DATA__ = {data_json};
+            console.log('[Server] Widget data injected in BODY:', window.__WIDGET_DATA__);
+        }}
+        </script>
+        """
+        modified_html = widget.html.replace("</head>", f"{data_script_head}</head>")
+        modified_html = modified_html.replace("</body>", f"{data_script_body}</body>")
         
         # Create a modified widget resource with injected data
         widget_resource = types.EmbeddedResource(

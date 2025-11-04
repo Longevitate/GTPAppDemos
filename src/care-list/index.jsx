@@ -4,23 +4,33 @@ import locationsData from "./locations.json";
 import { MapPin, Star, Clock, Navigation } from "lucide-react";
 
 function App() {
-  const [locations, setLocations] = useState(locationsData?.locations || []);
+  const [locations, setLocations] = useState([]);
   
   useEffect(() => {
+    console.log('[Care Widget] Initializing...');
+    console.log('[Care Widget] window.__WIDGET_DATA__:', window.__WIDGET_DATA__);
+    console.log('[Care Widget] Fallback locations.json:', locationsData);
+    
+    // Check if data is already available on window
+    const serverData = window.__WIDGET_DATA__ || window.__INITIAL_DATA__ || {};
+    if (serverData.locations && serverData.locations.length > 0) {
+      console.log(`[Care Widget] Using ${serverData.locations.length} locations from server data`);
+      console.log('[Care Widget] First location:', serverData.locations[0].name, '@', serverData.locations[0].distance, 'mi');
+      setLocations(serverData.locations);
+    } else {
+      console.log('[Care Widget] No server data found, using fallback locations.json');
+      setLocations(locationsData?.locations || []);
+    }
+    
     // Listen for data from MCP/ChatGPT
     const handleMessage = (event) => {
       if (event.data && event.data.locations) {
+        console.log(`[Care Widget] Received ${event.data.locations.length} locations via postMessage`);
         setLocations(event.data.locations);
       }
     };
     
     window.addEventListener('message', handleMessage);
-    
-    // Check if data is already available on window
-    const serverData = window.__WIDGET_DATA__ || window.__INITIAL_DATA__ || {};
-    if (serverData.locations && serverData.locations.length > 0) {
-      setLocations(serverData.locations);
-    }
     
     return () => window.removeEventListener('message', handleMessage);
   }, []);
