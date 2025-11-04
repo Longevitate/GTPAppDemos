@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 import math
 import httpx
+import json
 
 import mcp.types as types
 from mcp.server.fastmcp import FastMCP
@@ -113,30 +114,42 @@ WIDGETS_BY_URI: Dict[str, PizzazWidget] = {
 }
 
 
-# ZIP code to lat/lon lookup for common WA, OR, CA areas
-ZIP_TO_COORDS: Dict[str, tuple[float, float]] = {
-    # Washington
-    "98229": (48.7519, -122.4787),  # Bellingham
-    "98101": (47.6080, -122.3350),  # Seattle Downtown
-    "98112": (47.6239, -122.3190),  # Seattle Capitol Hill
-    "98004": (47.6214, -122.2079),  # Bellevue
-    "98201": (47.9790, -122.2021),  # Everett
-    "98516": (47.0379, -122.8132),  # Lacey/Olympia
-    "99201": (47.6588, -117.4260),  # Spokane
-    # Oregon
-    "97203": (45.5898, -122.7375),  # Portland North
-    "97211": (45.5698, -122.6501),  # Portland NE
-    "97086": (45.4312, -122.7637),  # Happy Valley
-    "97013": (45.2629, -122.6774),  # Canby
-    "97301": (44.9429, -123.0351),  # Salem
-    "97401": (44.0521, -123.0868),  # Eugene
-    # California
-    "92868": (33.7879, -117.8531),  # Orange
-    "92629": (33.6095, -117.7288),  # Dana Point
-    "92677": (33.5272, -117.7132),  # Laguna Niguel
-    "90001": (33.9731, -118.2479),  # Los Angeles
-    "94102": (37.7799, -122.4193),  # San Francisco
-}
+# Load cached ZIP codes
+_ZIP_COORDS_CACHE: Dict[str, tuple[float, float]] | None = None
+
+def _load_zip_coords() -> Dict[str, tuple[float, float]]:
+    """Load ZIP code coordinates from cache file."""
+    global _ZIP_COORDS_CACHE
+    if _ZIP_COORDS_CACHE is None:
+        cache_file = Path(__file__).parent / "zip_coords_cache.json"
+        if cache_file.exists():
+            with open(cache_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                # Convert lists to tuples
+                _ZIP_COORDS_CACHE = {k: tuple(v) for k, v in data.items()}
+        else:
+            print(f"Warning: ZIP coords cache not found at {cache_file}")
+            _ZIP_COORDS_CACHE = {}
+    return _ZIP_COORDS_CACHE
+
+
+# Load cached Providence locations
+_PROVIDENCE_LOCATIONS_CACHE: List[Dict[str, Any]] | None = None
+
+def _load_providence_locations() -> List[Dict[str, Any]]:
+    """Load Providence locations from cache file."""
+    global _PROVIDENCE_LOCATIONS_CACHE
+    if _PROVIDENCE_LOCATIONS_CACHE is None:
+        cache_file = Path(__file__).parent / "providence_locations_cache.json"
+        if cache_file.exists():
+            with open(cache_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                _PROVIDENCE_LOCATIONS_CACHE = data.get("locations", [])
+                print(f"Loaded {len(_PROVIDENCE_LOCATIONS_CACHE)} Providence locations from cache")
+        else:
+            print(f"Warning: Providence locations cache not found at {cache_file}")
+            _PROVIDENCE_LOCATIONS_CACHE = []
+    return _PROVIDENCE_LOCATIONS_CACHE
 
 
 def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -157,14 +170,21 @@ def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> fl
 
 
 def zip_to_coords(zip_code: str) -> tuple[float, float] | None:
-    """Convert a ZIP code to lat/lon coordinates."""
-    # Clean the ZIP code (remove any extra characters)
+    """Convert a ZIP code to lat/lon coordinates using cached data."""
     clean_zip = zip_code.strip().split('-')[0][:5]
-    return ZIP_TO_COORDS.get(clean_zip)
+    zip_coords = _load_zip_coords()
+    return zip_coords.get(clean_zip)
 
 
 async def fetch_providence_locations() -> List[Dict[str, Any]]:
-    """Fetch all Providence care locations from the API."""
+    """Get Providence care locations from cache (with API fallback)."""
+    # Try cache first
+    cached_locations = _load_providence_locations()
+    if cached_locations:
+        return cached_locations
+    
+    # Fallback to API if cache is empty
+    print("Cache empty, fetching from API...")
     url = "https://providencekyruus.azurewebsites.net/api/searchlocationsbyservices"
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -173,7 +193,7 @@ async def fetch_providence_locations() -> List[Dict[str, Any]]:
             data = response.json()
             return data.get("locations", [])
     except Exception as e:
-        print(f"Error fetching Providence locations: {e}")
+        print(f"Error fetching Providence locations from API: {e}")
         return []
 
 
