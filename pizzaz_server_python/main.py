@@ -17,6 +17,9 @@ from typing import Any, Dict, List
 import math
 import httpx
 import json
+import uuid
+from datetime import datetime, timedelta
+from typing import Dict, Any, Optional
 
 import mcp.types as types
 from mcp.server.fastmcp import FastMCP
@@ -223,6 +226,45 @@ class CareLocationInput(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True, extra="allow")
 
+
+# Session storage for widget data
+# In production, use Redis or similar
+widget_sessions: Dict[str, Dict[str, Any]] = {}
+
+def store_widget_data(data: dict, ttl_minutes: int = 15) -> str:
+    """Store widget data with a session ID and expiration time."""
+    session_id = str(uuid.uuid4())
+    expires = datetime.now() + timedelta(minutes=ttl_minutes)
+    widget_sessions[session_id] = {
+        "data": data,
+        "expires": expires
+    }
+    print(f"[Session] Created session {session_id} with {len(data.get('locations', []))} locations, expires in {ttl_minutes} min")
+    return session_id
+
+def get_widget_data(session_id: str) -> Optional[dict]:
+    """Retrieve widget data by session ID if not expired."""
+    session = widget_sessions.get(session_id)
+    if not session:
+        print(f"[Session] Session {session_id} not found")
+        return None
+    
+    if session["expires"] < datetime.now():
+        print(f"[Session] Session {session_id} expired")
+        del widget_sessions[session_id]
+        return None
+    
+    print(f"[Session] Retrieved session {session_id}")
+    return session["data"]
+
+def cleanup_expired_sessions():
+    """Remove expired sessions from storage."""
+    now = datetime.now()
+    expired = [sid for sid, sess in widget_sessions.items() if sess["expires"] < now]
+    for sid in expired:
+        del widget_sessions[sid]
+    if expired:
+        print(f"[Session] Cleaned up {len(expired)} expired sessions")
 
 mcp = FastMCP(
     name="pizzaz-python",
@@ -503,49 +545,26 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
         
         structured_content = {"pizzaTopping": payload.pizza_topping}
 
-    # For care-locations, try to pass data via URL parameters
+    # For care-locations, store data in session and pass session ID to widget
     if widget.identifier == "care-locations" and "locations" in structured_content:
-        import json
-        import base64
-        print(f"Encoding {len(structured_content.get('locations', []))} locations for widget")
+        print(f"Storing {len(structured_content.get('locations', []))} locations for widget")
         if structured_content.get('locations'):
             print(f"First location: {structured_content['locations'][0].get('name')} @ {structured_content['locations'][0].get('distance')} mi")
         
-        # Encode data as base64 to pass via URL
-        data_json = json.dumps(structured_content)
-        data_b64 = base64.b64encode(data_json.encode('utf-8')).decode('utf-8')
+        # Store data with a session ID
+        session_id = store_widget_data(structured_content)
         
-        # Modify widget URI to include data
-        widget_uri_with_data = f"{widget.template_uri}?data={data_b64[:500]}"  # Limit length
-        print(f"Widget URI with data (first 100 chars): {widget_uri_with_data[:100]}...")
+        # Modify widget URI to include session ID
+        widget_uri_with_session = f"{widget.template_uri}?session={session_id}"
+        print(f"Widget URI: {widget_uri_with_session}")
         
-        # Also inject into HTML as backup
-        data_script = f"""
-        <script>
-        window.__WIDGET_DATA__ = {data_json};
-        console.log('[Server] Widget data injected:', window.__WIDGET_DATA__);
-        
-        // Also listen for ready message from widget
-        window.addEventListener('message', function(event) {{
-            if (event.data && event.data.type === 'widget-ready') {{
-                console.log('[Server] Widget ready, sending data...');
-                event.source.postMessage({{
-                    type: 'widget-data',
-                    locations: window.__WIDGET_DATA__.locations
-                }}, '*');
-            }}
-        }});
-        </script>
-        """
-        modified_html = widget.html.replace("</head>", f"{data_script}</head>")
-        
-        # Create a modified widget resource with injected data
+        # Create widget resource with session ID in URI
         widget_resource = types.EmbeddedResource(
             type="resource",
             resource=types.TextResourceContents(
-                uri=widget_uri_with_data,
+                uri=widget_uri_with_session,
                 mimeType=MIME_TYPE,
-                text=modified_html,
+                text=widget.html,  # Use original HTML, widget will fetch data via API
                 title=widget.title,
             ),
         )
@@ -580,6 +599,31 @@ mcp._mcp_server.request_handlers[types.ReadResourceRequest] = _handle_read_resou
 
 
 app = mcp.streamable_http_app()
+
+# Add API endpoint for widget data
+from starlette.responses import JSONResponse
+from starlette.routing import Route
+
+async def get_widget_data_endpoint(request):
+    """API endpoint to fetch widget data by session ID."""
+    session_id = request.path_params.get('session_id')
+    
+    # Cleanup expired sessions periodically
+    cleanup_expired_sessions()
+    
+    data = get_widget_data(session_id)
+    if data:
+        print(f"[API] Serving {len(data.get('locations', []))} locations for session {session_id}")
+        return JSONResponse(data)
+    else:
+        print(f"[API] Session {session_id} not found or expired")
+        return JSONResponse(
+            {"error": "Session not found or expired", "locations": []},
+            status_code=404
+        )
+
+# Add the route to the app
+app.routes.insert(0, Route('/api/widget-data/{session_id}', get_widget_data_endpoint))
 
 # Mount static files for widget assets
 app.mount("/assets", StaticFiles(directory=str(ASSETS_DIR)), name="assets")
