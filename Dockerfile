@@ -30,6 +30,8 @@ RUN python3 -m venv /opt/venv && \
 COPY . .
 
 # Build the assets
+ARG BASE_URL
+ENV BASE_URL=${BASE_URL:-http://localhost:4444}
 RUN pnpm run build
 
 # Expose the port that Azure Web App expects
