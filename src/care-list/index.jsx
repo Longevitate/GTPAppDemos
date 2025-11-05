@@ -11,6 +11,7 @@ function App() {
   // Use the official React hook to get toolOutput!
   const toolOutput = useOpenAiGlobal('toolOutput');
   
+  // Initialize with empty array to avoid showing fallback data
   const [locations, setLocations] = useState([]);
   
   useEffect(() => {
@@ -23,34 +24,20 @@ function App() {
       console.log('[Care Widget] User location:', toolOutput.location);
       console.log('[Care Widget] User coords:', toolOutput.user_coords);
       setLocations(toolOutput.locations);
-    } else {
-      console.log('[Care Widget] ⚠️ No toolOutput yet, using fallback');
-      setLocations(locationsData?.locations || []);
     }
+    // Removed fallback - wait for real data from toolOutput
   }, [toolOutput]);
 
   return (
     <div className="antialiased w-full text-black px-4 pb-2 border border-black/10 rounded-2xl sm:rounded-3xl overflow-hidden bg-white">
       <div className="max-w-full">
         <div className="flex flex-row items-center gap-4 sm:gap-4 border-b border-black/5 py-4">
-          <div
-            className="sm:w-18 w-16 aspect-square rounded-xl bg-white flex items-center justify-center"
-          >
-            <svg
-              className="w-12 h-12"
-              viewBox="0 0 100 100"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              {/* Providence Cross Logo */}
-              {/* Vertical bar - green */}
-              <path d="M40 10 L40 35 L30 35 L30 65 L40 65 L40 90 L60 90 L60 65 L70 65 L70 35 L60 35 L60 10 Z" fill="#3A7D44"/>
-              {/* Horizontal bar - green */}
-              <path d="M10 40 L35 40 L35 30 L65 30 L65 40 L90 40 L90 60 L65 60 L65 70 L35 70 L35 60 L10 60 Z" fill="#3A7D44"/>
-              {/* Vertical bar - blue overlay */}
-              <path d="M45 10 L45 35 L40 35 L40 65 L45 65 L45 90 L55 90 L55 65 L60 65 L60 35 L55 35 L55 10 Z" fill="#0066B3"/>
-              {/* Horizontal bar - blue overlay */}
-              <path d="M10 45 L35 45 L35 40 L65 40 L65 45 L90 45 L90 55 L65 55 L65 60 L35 60 L35 55 L10 55 Z" fill="#0066B3"/>
-            </svg>
+          <div className="sm:w-18 w-16 aspect-square rounded-xl bg-white flex items-center justify-center p-2">
+            <img
+              src="/assets/Prov.png"
+              alt="Providence Health"
+              className="w-full h-full object-contain"
+            />
           </div>
           <div>
             <div className="text-base sm:text-xl font-medium">
@@ -72,7 +59,7 @@ function App() {
                   borderBottom:
                     i === 7 - 1 ? "none" : "1px solid rgba(0, 0, 0, 0.05)",
                 }}
-                className="flex w-full items-center hover:border-black/0! gap-2"
+                className="flex w-full items-start hover:border-black/0! gap-2"
               >
                 <div className="py-3 pr-3 min-w-0 w-full sm:w-3/5">
                   <div className="flex items-center gap-3">
