@@ -5,7 +5,7 @@ import { MapPin, Star, Clock, Navigation } from "lucide-react";
 import { useOpenAiGlobal } from "../use-openai-global";
 
 // Widget version for cache busting
-const WIDGET_VERSION = "3.0.0-react-hook";
+const WIDGET_VERSION = "3.1.0-logo-loading-spacing";
 
 function App() {
   // Use the official React hook to get toolOutput!
@@ -13,6 +13,7 @@ function App() {
   
   // Initialize with empty array to avoid showing fallback data
   const [locations, setLocations] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
   
   useEffect(() => {
     console.log(`[Care Widget v${WIDGET_VERSION}] Initializing...`);
@@ -24,8 +25,8 @@ function App() {
       console.log('[Care Widget] User location:', toolOutput.location);
       console.log('[Care Widget] User coords:', toolOutput.user_coords);
       setLocations(toolOutput.locations);
+      setIsLoading(false);
     }
-    // Removed fallback - wait for real data from toolOutput
   }, [toolOutput]);
 
   return (
@@ -34,7 +35,7 @@ function App() {
         <div className="flex flex-row items-center gap-4 sm:gap-4 border-b border-black/5 py-4">
           <div className="sm:w-18 w-16 aspect-square rounded-xl bg-white flex items-center justify-center p-2">
             <img
-              src="/static/Prov.png"
+              src="https://provgpt.azurewebsites.net/static/Prov.png"
               alt="Providence Health"
               className="w-full h-full object-contain"
             />
@@ -82,7 +83,7 @@ function App() {
                           </span>
                         </div>
                       )}
-                      <div className="mt-1 sm:mt-0.25 flex items-center gap-3 text-black/70 text-sm">
+                      <div className="mt-2 sm:mt-2 flex items-center gap-3 text-black/70 text-sm">
                         {location.rating_value && (
                           <div className="flex items-center gap-1">
                             <Star
@@ -139,17 +140,9 @@ function App() {
           ))}
           {locations.length === 0 && (
             <div className="py-6 text-center text-black/60">
-              No care locations found.
+              {isLoading ? "Loading locations..." : "No care locations found."}
             </div>
           )}
-        </div>
-        <div className="sm:hidden px-0 pt-2 pb-2">
-          <button
-            type="button"
-            className="w-full cursor-pointer inline-flex items-center justify-center rounded-full bg-[#0066cc] text-white px-4 py-2 font-medium hover:opacity-90 active:opacity-100"
-          >
-            Find Nearby
-          </button>
         </div>
       </div>
     </div>
