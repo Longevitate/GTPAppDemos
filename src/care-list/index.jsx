@@ -326,9 +326,26 @@ function App() {
                   </div>
                 </div>
                 
-                {/* Right Side - Timeslots */}
-                {location.booking_wheelhouse && (
+                {/* Right Side - Timeslots or Reserve Button */}
+                {location.booking_wheelhouse ? (
                   <TimeSlots location={location} apiBaseUrl={toolOutput?.api_base_url} />
+                ) : (
+                  <div className="bg-white rounded-lg border border-gray-200 p-4 ml-auto flex items-center justify-center" style={{ width: '340px', minHeight: '180px' }}>
+                    <div className="text-center">
+                      <h3 className="text-base font-semibold mb-3">Book Your Visit</h3>
+                      <button
+                        onClick={() => location.url && window.open(location.url, "_blank")}
+                        className="px-6 py-3 text-sm rounded-lg bg-[#003da5] text-white hover:bg-[#002b73] transition-colors font-semibold"
+                      >
+                        Reserve My Spot
+                      </button>
+                      {location.phone && (
+                        <p className="text-xs text-gray-600 mt-3">
+                          Or call: {location.phone}
+                        </p>
+                      )}
+                    </div>
+                  </div>
                 )}
               </div>
             </div>
