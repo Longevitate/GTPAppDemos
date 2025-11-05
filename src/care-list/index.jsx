@@ -118,41 +118,41 @@ function TimeSlots({ location, apiBaseUrl }) {
   const slotsToShow = availableSlots.slice(0, 5);
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-4 ml-auto" style={{ width: '400px' }}>
-      <div className="mb-3">
-        <h3 className="text-lg font-semibold text-center mb-3">Appointments Available</h3>
+    <div className="bg-white rounded-lg border border-gray-200 p-3 ml-auto" style={{ width: '340px' }}>
+      <div className="mb-2">
+        <h3 className="text-base font-semibold text-center mb-2">Appointments Available</h3>
         
         {/* Date Navigation */}
-        <div className="flex items-center justify-between gap-2 mb-4">
+        <div className="flex items-center justify-between gap-1 mb-3">
           <button
             onClick={goToPrevDate}
             disabled={selectedDateIndex === 0}
-            className="p-1 rounded-lg hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
+            className="p-0.5 rounded hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
           >
-            <ChevronLeft className="w-5 h-5" />
+            <ChevronLeft className="w-4 h-4" />
           </button>
           
           <div className="text-center">
-            <span className="font-semibold text-base">{selectedDate?.formatted_date}</span>
+            <span className="font-semibold text-sm">{selectedDate?.formatted_date}</span>
           </div>
           
           <button
             onClick={goToNextDate}
             disabled={selectedDateIndex === dates.length - 1}
-            className="p-1 rounded-lg hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
+            className="p-0.5 rounded hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
           >
-            <ChevronRight className="w-5 h-5" />
+            <ChevronRight className="w-4 h-4" />
           </button>
         </div>
 
         {/* Time Slots Grid */}
         {slotsToShow.length > 0 ? (
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-3 gap-1.5">
             {slotsToShow.map((slot, idx) => (
               <button
                 key={idx}
                 onClick={() => handleSlotClick(slot)}
-                className="px-3 py-2.5 text-sm rounded-lg bg-[#003da5] text-white hover:bg-[#002b73] transition-colors font-semibold"
+                className="px-2 py-2 text-xs rounded-md bg-[#003da5] text-white hover:bg-[#002b73] transition-colors font-semibold"
               >
                 {slot.formatted_time}
               </button>
@@ -160,16 +160,16 @@ function TimeSlots({ location, apiBaseUrl }) {
             {availableSlots.length > 5 && (
               <button
                 onClick={() => handleSlotClick(availableSlots[5])}
-                className="px-3 py-2.5 text-sm rounded-lg border-2 border-[#003da5] bg-white text-[#003da5] hover:bg-gray-50 transition-colors font-semibold"
+                className="px-2 py-2 text-xs rounded-md border-2 border-[#003da5] bg-white text-[#003da5] hover:bg-gray-50 transition-colors font-semibold"
               >
                 More
               </button>
             )}
           </div>
         ) : (
-          <div className="text-center text-gray-600 py-4">
-            <p className="text-sm">No slots available</p>
-            <p className="text-xs mt-1">Try selecting a different date</p>
+          <div className="text-center text-gray-600 py-3">
+            <p className="text-xs">No slots available</p>
+            <p className="text-xs mt-0.5">Try selecting a different date</p>
           </div>
         )}
       </div>
