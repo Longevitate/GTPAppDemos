@@ -745,6 +745,8 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                         "match_reason": match_description,  # User's original reason
                         "is_open_now": is_open,
                         "open_status": open_status,
+                        "booking_wheelhouse": loc.get("booking_wheelhouse"),
+                        "booking_department_id": loc.get("booking_department_id"),
                     }
                     processed_locations.append(processed_loc)
             
@@ -809,6 +811,8 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                     "match_reason": match_description,  # User's original reason
                     "is_open_now": is_open,
                     "open_status": open_status,
+                    "booking_wheelhouse": loc.get("booking_wheelhouse"),
+                    "booking_department_id": loc.get("booking_department_id"),
                 }
                 processed_locations.append(processed_loc)
                 
@@ -997,8 +1001,94 @@ async def get_care_locations_endpoint(request):
             status_code=500
         )
 
-# Add the route to the app
+async def get_timeslots_endpoint(request):
+    """Proxy endpoint to fetch available timeslots from Providence API."""
+    location_code = request.query_params.get('location_code')
+    date = request.query_params.get('date')  # Optional: YYYY-MM-DD format
+    
+    if not location_code:
+        return JSONResponse(
+            {"error": "location_code parameter is required", "timeslots": []},
+            status_code=400
+        )
+    
+    print(f"[Timeslots API] Fetching slots for location: {location_code}, date: {date or 'next 7 days'}")
+    
+    try:
+        # Build Providence API URL
+        url = f"https://providencekyruus.azurewebsites.net/api/getprovinnovatetimeslots?location_code={location_code}"
+        
+        # Add optional date parameters if provided
+        if date:
+            # Providence API might use start_date/end_date params
+            url += f"&start_date={date}"
+        
+        # Fetch timeslots from Providence API
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+            data = response.json()
+            
+            # Check if API returned error
+            if not data.get("success", True):
+                error_msg = data.get("error", "Unknown error")
+                print(f"[Timeslots API] Providence API error: {error_msg}")
+                return JSONResponse({
+                    "success": False,
+                    "error": error_msg,
+                    "timeslots": [],
+                    "location_code": location_code
+                })
+            
+            # Extract timeslots data
+            timeslots_data = data.get("timeslots", {})
+            dates = timeslots_data.get("dates", [])
+            
+            print(f"[Timeslots API] Found {len(dates)} dates with available slots")
+            
+            # Return the full structure - frontend can work with dates directly
+            return JSONResponse({
+                "success": True,
+                "location_code": location_code,
+                "dates": dates,  # Array of date objects with times
+                "num_dates": timeslots_data.get("num_dates", len(dates)),
+                "phone_number": data.get("phone_number"),
+                "phone_number_formatted": data.get("phone_number_formatted"),
+            })
+    
+    except httpx.HTTPStatusError as e:
+        print(f"[Timeslots API] HTTP error: {e.response.status_code}")
+        return JSONResponse({
+            "success": False,
+            "error": f"Providence API returned error: {e.response.status_code}",
+            "timeslots": [],
+            "location_code": location_code
+        }, status_code=e.response.status_code)
+    
+    except httpx.TimeoutException:
+        print(f"[Timeslots API] Request timed out")
+        return JSONResponse({
+            "success": False,
+            "error": "Request to Providence API timed out",
+            "timeslots": [],
+            "location_code": location_code
+        }, status_code=504)
+    
+    except Exception as e:
+        print(f"[Timeslots API] Unexpected error: {e}")
+        import traceback
+        traceback.print_exc()
+        return JSONResponse({
+            "success": False,
+            "error": str(e),
+            "timeslots": [],
+            "location_code": location_code
+        }, status_code=500)
+
+
+# Add the routes to the app
 app.routes.insert(0, Route('/api/care-locations', get_care_locations_endpoint))
+app.routes.insert(0, Route('/api/timeslots', get_timeslots_endpoint))
 
 # Mount static files for widget assets
 app.mount("/assets", StaticFiles(directory=str(ASSETS_DIR)), name="assets")

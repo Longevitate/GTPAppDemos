@@ -1,11 +1,171 @@
 import React, { useState, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import locationsData from "./locations.json";
-import { MapPin, Star, Clock, Navigation } from "lucide-react";
+import { MapPin, Star, Clock, Navigation, ChevronLeft, ChevronRight, Calendar } from "lucide-react";
 import { useOpenAiGlobal } from "../use-openai-global";
 
 // Widget version for cache busting
-const WIDGET_VERSION = "3.1.0-logo-loading-spacing";
+const WIDGET_VERSION = "4.0.0-timeslot-booking";
+
+// TimeSlots component for displaying and booking available slots
+function TimeSlots({ location }) {
+  const [dates, setDates] = useState([]);
+  const [selectedDateIndex, setSelectedDateIndex] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (location.booking_wheelhouse) {
+      fetchTimeslots();
+    }
+  }, [location.booking_wheelhouse]);
+
+  const fetchTimeslots = async () => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      // Get API base URL from current location or use localhost for dev
+      const apiBase = window.location.hostname === 'localhost' 
+        ? 'http://localhost:8000' 
+        : window.location.origin;
+      
+      const response = await fetch(
+        `${apiBase}/api/timeslots?location_code=${encodeURIComponent(location.booking_wheelhouse)}`
+      );
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to fetch timeslots');
+      }
+      
+      setDates(data.dates || []);
+      
+      // Find first date with slots
+      const firstDateWithSlots = (data.dates || []).findIndex(d => d.num_times > 0);
+      if (firstDateWithSlots !== -1) {
+        setSelectedDateIndex(firstDateWithSlots);
+      }
+      
+    } catch (err) {
+      console.error('Error fetching timeslots:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSlotClick = (slot) => {
+    // Deep link to Providence booking page
+    const bookingUrl = `https://scheduling.care.psjhealth.org/retail?timeSlot=${slot.encoded_timeslot}&departmentUrlName=${encodeURIComponent(location.booking_wheelhouse)}&brand=providence`;
+    window.open(bookingUrl, '_blank');
+  };
+
+  const goToPrevDate = () => {
+    if (selectedDateIndex > 0) {
+      setSelectedDateIndex(selectedDateIndex - 1);
+    }
+  };
+
+  const goToNextDate = () => {
+    if (selectedDateIndex < dates.length - 1) {
+      setSelectedDateIndex(selectedDateIndex + 1);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="p-4 text-center">
+        <div className="animate-pulse flex flex-col gap-2">
+          <div className="h-8 bg-gray-200 rounded w-2/3 mx-auto"></div>
+          <div className="grid grid-cols-3 gap-2 mt-4">
+            {[...Array(9)].map((_, i) => (
+              <div key={i} className="h-10 bg-gray-200 rounded"></div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-4 text-center text-red-600">
+        <p className="mb-2">Unable to load available time slots.</p>
+        <p className="text-sm text-gray-600">Please call {location.phone || 'the location'} to book.</p>
+      </div>
+    );
+  }
+
+  if (!dates || dates.length === 0) {
+    return (
+      <div className="p-4 text-center text-gray-600">
+        <p className="mb-2">No available time slots found.</p>
+        <p className="text-sm">Please call {location.phone || 'the location'} to book an appointment.</p>
+      </div>
+    );
+  }
+
+  const selectedDate = dates[selectedDateIndex];
+  const availableSlots = selectedDate?.times || [];
+
+  return (
+    <div className="border-t border-gray-200 bg-gray-50 p-4">
+      <div className="mb-4">
+        <h3 className="text-sm font-semibold mb-3">Select a time slot</h3>
+        
+        {/* Date Navigation */}
+        <div className="flex items-center justify-between gap-2 mb-4">
+          <button
+            onClick={goToPrevDate}
+            disabled={selectedDateIndex === 0}
+            className="p-2 rounded-lg hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+          
+          <div className="flex items-center gap-2 text-center">
+            <Calendar className="w-4 h-4 text-gray-600" />
+            <span className="font-medium">{selectedDate?.formatted_date}</span>
+          </div>
+          
+          <button
+            onClick={goToNextDate}
+            disabled={selectedDateIndex === dates.length - 1}
+            className="p-2 rounded-lg hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            <ChevronRight className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Time Slots Grid */}
+        {availableSlots.length > 0 ? (
+          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+            {availableSlots.map((slot, idx) => (
+              <button
+                key={idx}
+                onClick={() => handleSlotClick(slot)}
+                className="px-3 py-2 text-sm rounded-lg border border-blue-300 bg-white text-blue-700 hover:bg-blue-50 hover:border-blue-500 transition-colors font-medium"
+              >
+                {slot.formatted_time}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center text-gray-600 py-4">
+            <p className="text-sm">No slots available for this date.</p>
+            <p className="text-xs mt-1">Try selecting a different date.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function App() {
   // Use the official React hook to get toolOutput!
@@ -14,6 +174,7 @@ function App() {
   // Initialize with empty array to avoid showing fallback data
   const [locations, setLocations] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [expandedLocationId, setExpandedLocationId] = useState(null);
   
   useEffect(() => {
     console.log(`[Care Widget v${WIDGET_VERSION}] Initializing...`);
@@ -80,7 +241,10 @@ function App() {
           </div>
         )}
         <div className="min-w-full text-sm flex flex-col">
-          {locations.slice(0, 7).map((location, i) => (
+          {locations.slice(0, 7).map((location, i) => {
+            const isExpanded = expandedLocationId === location.id;
+            
+            return (
             <div
               key={location.id}
               className="px-3 -mx-2 rounded-2xl hover:bg-black/5"
@@ -88,7 +252,7 @@ function App() {
               <div
                 style={{
                   borderBottom:
-                    i === 7 - 1 ? "none" : "1px solid rgba(0, 0, 0, 0.05)",
+                    i === 7 - 1 && !isExpanded ? "none" : "1px solid rgba(0, 0, 0, 0.05)",
                 }}
                 className="flex w-full items-start hover:border-black/0! gap-2"
               >
@@ -157,7 +321,28 @@ function App() {
                     {location.address_plain.split(",").slice(-2).join(",")}
                   </div>
                 </div>
-                <div className="py-2 whitespace-nowrap flex justify-end">
+                <div className="py-2 whitespace-nowrap flex justify-end gap-2">
+                  {location.booking_wheelhouse ? (
+                    <button
+                      className={`px-3 py-1.5 text-xs rounded-full transition-colors ${
+                        isExpanded 
+                          ? 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                          : 'bg-green-600 text-white hover:bg-green-700'
+                      }`}
+                      onClick={() => setExpandedLocationId(isExpanded ? null : location.id)}
+                    >
+                      {isExpanded ? 'Close' : 'Book Now'}
+                    </button>
+                  ) : (
+                    location.url && (
+                      <button
+                        className="px-3 py-1.5 text-xs rounded-full bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                        onClick={() => window.open(location.url, "_blank")}
+                      >
+                        Reserve Spot
+                      </button>
+                    )
+                  )}
                   <button
                     className="px-3 py-1.5 text-xs rounded-full bg-[#0066cc] text-white hover:bg-[#0052a3] transition-colors"
                     onClick={() => {
@@ -166,12 +351,18 @@ function App() {
                       }
                     }}
                   >
-                    View
+                    View Details
                   </button>
                 </div>
               </div>
+              
+              {/* Timeslots Section */}
+              {isExpanded && location.booking_wheelhouse && (
+                <TimeSlots location={location} />
+              )}
             </div>
-          ))}
+            );
+          })}
           {locations.length === 0 && (
             <div className="py-6 text-center text-black/60">
               {isLoading ? "Loading locations..." : "No care locations found."}
