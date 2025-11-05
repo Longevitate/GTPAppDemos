@@ -88,6 +88,13 @@ function App() {
                       <div className="font-medium text-sm sm:text-md truncate max-w-[40ch]">
                         {location.name}
                       </div>
+                      {location.match_reason && (
+                        <div className="mt-0.5 mb-1">
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                            Treats: {location.match_reason}
+                          </span>
+                        </div>
+                      )}
                       <div className="mt-1 sm:mt-0.25 flex items-center gap-3 text-black/70 text-sm">
                         {location.rating_value && (
                           <div className="flex items-center gap-1">

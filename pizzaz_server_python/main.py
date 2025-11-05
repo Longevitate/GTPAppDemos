@@ -179,6 +179,46 @@ def zip_to_coords(zip_code: str) -> tuple[float, float] | None:
     return zip_coords.get(clean_zip)
 
 
+def location_matches_reason(location: Dict[str, Any], reason: str) -> tuple[bool, str | None]:
+    """
+    Check if a location offers services matching the user's reason for visit.
+    
+    Returns:
+        (matches, match_description): True if matches with description of what matched,
+                                       False with None if no match
+    """
+    if not reason or not reason.strip():
+        # No reason provided, all locations match
+        return (True, None)
+    
+    reason_lower = reason.lower().strip()
+    services = location.get("services", [])
+    
+    # Check each service category
+    for service_category in services:
+        category_name = service_category.get("name", "")
+        values = service_category.get("values", [])
+        
+        for service_item in values:
+            service_val = service_item.get("val", "").lower()
+            
+            # Check for fuzzy match using simple word overlap
+            reason_words = set(reason_lower.split())
+            service_words = set(service_val.split())
+            
+            # If there's significant word overlap, it's a match
+            common_words = reason_words & service_words
+            if common_words:
+                return (True, f"{service_item.get('val', '')} ({category_name})")
+            
+            # Also check if reason is contained in service or vice versa
+            if reason_lower in service_val or service_val in reason_lower:
+                return (True, f"{service_item.get('val', '')} ({category_name})")
+    
+    # No match found
+    return (False, None)
+
+
 async def fetch_providence_locations() -> List[Dict[str, Any]]:
     """Get Providence care locations from cache (with API fallback)."""
     # Try cache first
@@ -404,14 +444,18 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
         # Fetch all locations from Providence API
         all_locations = await fetch_providence_locations()
         
+        # Log triage information
+        if payload.reason and payload.reason.strip():
+            print(f"🏥 Triage: Filtering for '{payload.reason}'")
+        
         # Process location parameter
         user_coords = None
         if payload.location and payload.location.strip():
             user_coords = zip_to_coords(payload.location)
             if user_coords:
-                print(f"Geocoded ZIP {payload.location} to coords: {user_coords}")
+                print(f"📍 Geocoded ZIP {payload.location} to coords: {user_coords}")
             else:
-                print(f"Warning: Could not geocode ZIP {payload.location}")
+                print(f"⚠️  Warning: Could not geocode ZIP {payload.location}")
         
         # If we have user coordinates, calculate distances and sort
         processed_locations = []
@@ -428,6 +472,13 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                 if loc_id in seen_ids:
                     continue
                 seen_ids.add(loc_id)
+                
+                # Check if location matches the reason for visit
+                matches_reason, match_description = location_matches_reason(loc, payload.reason)
+                if payload.reason and payload.reason.strip() and not matches_reason:
+                    # Skip locations that don't match the reason
+                    continue
+                
                 coords = loc.get("coordinates")
                 if coords and coords.get("lat") and coords.get("lng"):
                     distance = haversine_distance(
@@ -451,6 +502,7 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                         "is_express_care": loc.get("is_express_care"),
                         "is_urgent_care": loc.get("is_urgent_care"),
                         "services": loc.get("services", []),
+                        "match_reason": match_description,  # Why this location matches
                     }
                     processed_locations.append(processed_loc)
             
@@ -472,12 +524,21 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
             
             # Debug: log top 3 locations
             if processed_locations:
+                if payload.reason and payload.reason.strip():
+                    print(f"✅ Found {len(processed_locations)} locations matching '{payload.reason}'")
                 print(f"Top 3 closest locations:")
                 for loc in processed_locations[:3]:
-                    print(f"  - {loc['name']}: {loc['distance']} mi")
+                    match_info = f" - matches: {loc.get('match_reason')}" if loc.get('match_reason') else ""
+                    print(f"  - {loc['name']}: {loc['distance']} mi{match_info}")
         else:
-            # No location provided or couldn't geocode - use first 7 locations as-is
-            for loc in all_locations[:7]:
+            # No location provided or couldn't geocode - filter by reason and take first matches
+            for loc in all_locations:
+                # Check if location matches the reason for visit
+                matches_reason, match_description = location_matches_reason(loc, payload.reason)
+                if payload.reason and payload.reason.strip() and not matches_reason:
+                    # Skip locations that don't match the reason
+                    continue
+                
                 processed_loc = {
                     "id": loc.get("id"),
                     "name": loc.get("name"),
@@ -493,14 +554,26 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                     "is_express_care": loc.get("is_express_care"),
                     "is_urgent_care": loc.get("is_urgent_care"),
                     "services": loc.get("services", []),
+                    "match_reason": match_description,  # Why this location matches
                 }
                 processed_locations.append(processed_loc)
+                
+                # Take first 7 matches
+                if len(processed_locations) >= 7:
+                    break
+            
+            # Log results
+            if payload.reason and payload.reason.strip():
+                print(f"✅ Found {len(processed_locations)} locations matching '{payload.reason}'")
+                if processed_locations and processed_locations[0].get('match_reason'):
+                    print(f"Example match: {processed_locations[0].get('match_reason')}")
         
         structured_content = {
             "reason": payload.reason or "general care",
             "location": payload.location or "unspecified",
             "user_coords": user_coords,
             "locations": processed_locations,
+            "filtered_by_reason": bool(payload.reason and payload.reason.strip()),
         }
     else:
         # Handle pizza tools
