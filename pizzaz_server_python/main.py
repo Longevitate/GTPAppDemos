@@ -179,6 +179,193 @@ def zip_to_coords(zip_code: str) -> tuple[float, float] | None:
     return zip_coords.get(clean_zip)
 
 
+def detect_er_red_flags(reason: str) -> tuple[bool, str | None]:
+    """
+    Detect life-threatening symptoms that require immediate ER attention.
+    
+    Returns:
+        (is_emergency, warning_message): True with message if emergency detected
+    """
+    if not reason or not reason.strip():
+        return (False, None)
+    
+    reason_lower = reason.lower().strip()
+    
+    # Define emergency red flags with their warning messages
+    red_flags = [
+        # Cardiac
+        (["chest pain", "chest pressure", "chest tightness", "heart attack"], 
+         "chest pain or pressure - this could be a heart attack"),
+        
+        # Respiratory
+        (["difficulty breathing", "can't breathe", "cannot breathe", "shortness of breath", "severe breathing"],
+         "difficulty breathing - this requires immediate attention"),
+        
+        # Neurological
+        (["stroke", "face drooping", "arm weakness", "slurred speech", "severe headache", "worst headache"],
+         "stroke symptoms - time is critical"),
+        (["loss of consciousness", "unconscious", "passed out", "unresponsive"],
+         "loss of consciousness - call 911 immediately"),
+        (["severe confusion", "altered mental state"],
+         "altered mental state - needs immediate evaluation"),
+        
+        # Bleeding/Trauma
+        (["severe bleeding", "heavy bleeding", "bleeding won't stop", "severe trauma", "severe injury"],
+         "severe bleeding or trauma - needs emergency care"),
+        (["severe head injury", "head trauma"],
+         "head injury - needs immediate evaluation"),
+        
+        # Allergic/Respiratory
+        (["severe allergic reaction", "anaphylaxis", "throat swelling", "tongue swelling"],
+         "severe allergic reaction - use EpiPen if available and call 911"),
+        
+        # Mental Health
+        (["suicidal", "want to die", "kill myself", "suicide"],
+         "mental health crisis - call 988 Suicide & Crisis Lifeline or 911"),
+        
+        # Other Critical
+        (["severe abdominal pain", "severe stomach pain"],
+         "severe abdominal pain - could indicate serious condition"),
+        (["coughing up blood", "vomiting blood", "blood in stool"],
+         "bleeding from body - needs emergency evaluation"),
+        (["seizure", "convulsion"],
+         "seizure - needs immediate medical attention"),
+    ]
+    
+    # Check for red flags
+    for keywords, warning in red_flags:
+        for keyword in keywords:
+            if keyword in reason_lower:
+                return (True, warning)
+    
+    return (False, None)
+
+
+def detect_service_requirements(reason: str) -> list[str]:
+    """
+    Detect what services might be needed based on the reason.
+    
+    Returns:
+        List of required services (e.g., ['x-ray', 'lab'])
+    """
+    if not reason or not reason.strip():
+        return []
+    
+    reason_lower = reason.lower().strip()
+    requirements = []
+    
+    # X-ray requirements
+    xray_keywords = ["fracture", "broken bone", "sprain", "twisted ankle", "chest x-ray", "x-ray"]
+    if any(kw in reason_lower for kw in xray_keywords):
+        requirements.append("x-ray")
+    
+    # Lab requirements
+    lab_keywords = ["blood test", "lab work", "test results", "cholesterol", "std test", "sti test"]
+    if any(kw in reason_lower for kw in lab_keywords):
+        requirements.append("lab")
+    
+    # Procedure room (stitches, wound care)
+    procedure_keywords = ["stitches", "sutures", "deep cut", "wound", "laceration"]
+    if any(kw in reason_lower for kw in procedure_keywords):
+        requirements.append("procedure")
+    
+    return requirements
+
+
+def is_location_open_now(location: Dict[str, Any]) -> tuple[bool, str]:
+    """
+    Check if a location is currently open.
+    
+    Returns:
+        (is_open, status_text): True with status if open, False with reason if closed
+    """
+    from datetime import datetime
+    
+    hours_today = location.get("hours_today")
+    if not hours_today:
+        return (False, "Hours unavailable")
+    
+    # Check if it's 24 hours
+    if hours_today.get("is24hours"):
+        return (True, "Open 24 hours")
+    
+    start_time = hours_today.get("start")
+    end_time = hours_today.get("end")
+    
+    if not start_time or not end_time:
+        return (False, "Hours unavailable")
+    
+    # Parse times (format: "8:00 am" or "8:00 pm")
+    try:
+        now = datetime.now()
+        current_time = now.time()
+        
+        # Simple time parsing
+        def parse_time(time_str):
+            time_str = time_str.strip().lower()
+            parts = time_str.replace("am", "").replace("pm", "").strip().split(":")
+            hour = int(parts[0])
+            minute = int(parts[1]) if len(parts) > 1 else 0
+            
+            # Convert to 24-hour format
+            if "pm" in time_str and hour != 12:
+                hour += 12
+            elif "am" in time_str and hour == 12:
+                hour = 0
+            
+            return hour, minute
+        
+        start_hour, start_min = parse_time(start_time)
+        end_hour, end_min = parse_time(end_time)
+        
+        start = datetime.now().replace(hour=start_hour, minute=start_min, second=0)
+        end = datetime.now().replace(hour=end_hour, minute=end_min, second=0)
+        
+        # Handle overnight hours (e.g., 8pm - 2am)
+        if end < start:
+            if current_time >= start.time() or current_time <= end.time():
+                return (True, "Open now")
+        else:
+            if start.time() <= current_time <= end.time():
+                return (True, "Open now")
+        
+        # Check if opens soon (within 1 hour)
+        if current_time < start.time():
+            time_diff = (start - datetime.now()).total_seconds() / 60
+            if time_diff <= 60:
+                return (False, f"Opens at {start_time}")
+        
+        return (False, f"Closed - Opens {start_time}")
+        
+    except Exception as e:
+        print(f"Error parsing hours: {e}")
+        return (False, "Hours unavailable")
+
+
+def location_has_service(location: Dict[str, Any], service_type: str) -> bool:
+    """
+    Check if a location has a specific service (x-ray, lab, procedure room).
+    """
+    services = location.get("services", [])
+    other_services = location.get("other", [])
+    
+    service_type_lower = service_type.lower()
+    
+    # Check in services array
+    for service_cat in services:
+        if service_cat.get("name", "").lower() == "other":
+            for item in service_cat.get("values", []):
+                item_val = item.get("val", "").lower()
+                if service_type_lower == "x-ray" and "x-ray" in item_val:
+                    return True
+                if service_type_lower == "lab" and ("lab" in item_val or "laboratory" in item_val):
+                    return True
+                if service_type_lower == "procedure" and ("procedure" in item_val or "minor injuries" in item_val):
+                    return True
+    
+    return False
+
+
 def location_matches_reason(location: Dict[str, Any], reason: str) -> tuple[bool, str | None]:
     """
     Check if a location offers services matching the user's reason for visit.
@@ -209,11 +396,11 @@ def location_matches_reason(location: Dict[str, Any], reason: str) -> tuple[bool
             # If there's significant word overlap, it's a match
             common_words = reason_words & service_words
             if common_words:
-                return (True, f"{service_item.get('val', '')} ({category_name})")
+                return (True, reason)  # Return the user's original reason
             
             # Also check if reason is contained in service or vice versa
             if reason_lower in service_val or service_val in reason_lower:
-                return (True, f"{service_item.get('val', '')} ({category_name})")
+                return (True, reason)  # Return the user's original reason
     
     # No match found
     return (False, None)
@@ -441,6 +628,49 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                 )
             )
         
+        # 🚨 CRITICAL: Check for ER red flags first!
+        is_emergency, emergency_warning = detect_er_red_flags(payload.reason)
+        if is_emergency:
+            print(f"🚨 EMERGENCY DETECTED: {emergency_warning}")
+            # Return emergency response - don't show urgent care locations
+            structured_content = {
+                "is_emergency": True,
+                "emergency_warning": emergency_warning,
+                "reason": payload.reason or "emergency",
+                "location": payload.location or "unspecified",
+                "user_coords": None,
+                "locations": [],
+            }
+            
+            # Return with emergency content
+            widget_resource = _embedded_widget_resource(widget)
+            meta: Dict[str, Any] = {
+                "openai.com/widget": widget_resource.model_dump(mode="json"),
+                "openai/outputTemplate": widget.template_uri,
+                "openai/toolInvocation/invoking": widget.invoking,
+                "openai/toolInvocation/invoked": widget.invoked,
+                "openai/widgetAccessible": True,
+                "openai/resultCanProduceWidget": True,
+            }
+            
+            return types.ServerResult(
+                types.CallToolResult(
+                    content=[
+                        types.TextContent(
+                            type="text",
+                            text=f"⚠️ EMERGENCY: {emergency_warning}. Please call 911 or go to the nearest ER immediately.",
+                        )
+                    ],
+                    structuredContent=structured_content,
+                    _meta=meta,
+                )
+            )
+        
+        # Detect service requirements (X-ray, lab, procedure room)
+        service_requirements = detect_service_requirements(payload.reason)
+        if service_requirements:
+            print(f"🔬 Detected service requirements: {', '.join(service_requirements)}")
+        
         # Fetch all locations from Providence API
         all_locations = await fetch_providence_locations()
         
@@ -479,6 +709,16 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                     # Skip locations that don't match the reason
                     continue
                 
+                # Check if location has required services
+                if service_requirements:
+                    has_all_services = all(location_has_service(loc, req) for req in service_requirements)
+                    if not has_all_services:
+                        # Skip locations missing required services
+                        continue
+                
+                # Check if location is open now
+                is_open, open_status = is_location_open_now(loc)
+                
                 coords = loc.get("coordinates")
                 if coords and coords.get("lat") and coords.get("lng"):
                     distance = haversine_distance(
@@ -502,7 +742,9 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                         "is_express_care": loc.get("is_express_care"),
                         "is_urgent_care": loc.get("is_urgent_care"),
                         "services": loc.get("services", []),
-                        "match_reason": match_description,  # Why this location matches
+                        "match_reason": match_description,  # User's original reason
+                        "is_open_now": is_open,
+                        "open_status": open_status,
                     }
                     processed_locations.append(processed_loc)
             
@@ -539,6 +781,16 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                     # Skip locations that don't match the reason
                     continue
                 
+                # Check if location has required services
+                if service_requirements:
+                    has_all_services = all(location_has_service(loc, req) for req in service_requirements)
+                    if not has_all_services:
+                        # Skip locations missing required services
+                        continue
+                
+                # Check if location is open now
+                is_open, open_status = is_location_open_now(loc)
+                
                 processed_loc = {
                     "id": loc.get("id"),
                     "name": loc.get("name"),
@@ -554,7 +806,9 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                     "is_express_care": loc.get("is_express_care"),
                     "is_urgent_care": loc.get("is_urgent_care"),
                     "services": loc.get("services", []),
-                    "match_reason": match_description,  # Why this location matches
+                    "match_reason": match_description,  # User's original reason
+                    "is_open_now": is_open,
+                    "open_status": open_status,
                 }
                 processed_locations.append(processed_loc)
                 
@@ -574,6 +828,8 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
             "user_coords": user_coords,
             "locations": processed_locations,
             "filtered_by_reason": bool(payload.reason and payload.reason.strip()),
+            "service_requirements": service_requirements,
+            "is_emergency": False,
         }
     else:
         # Handle pizza tools

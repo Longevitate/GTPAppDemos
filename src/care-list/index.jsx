@@ -49,6 +49,36 @@ function App() {
             </div>
           </div>
         </div>
+        {/* Emergency Warning Banner */}
+        {toolOutput?.is_emergency && (
+          <div className="bg-red-50 border-2 border-red-500 rounded-xl p-4 my-4">
+            <div className="flex items-start gap-3">
+              <div className="text-red-600 text-2xl font-bold">⚠️</div>
+              <div className="flex-1">
+                <div className="text-red-900 font-bold text-lg mb-1">
+                  EMERGENCY - CALL 911 IMMEDIATELY
+                </div>
+                <div className="text-red-800 text-sm mb-3">
+                  {toolOutput.emergency_warning}
+                </div>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <button
+                    className="px-4 py-2 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700"
+                    onClick={() => window.location.href = 'tel:911'}
+                  >
+                    📞 Call 911
+                  </button>
+                  <button
+                    className="px-4 py-2 bg-red-100 text-red-800 rounded-lg font-medium hover:bg-red-200"
+                    onClick={() => window.location.href = 'tel:988'}
+                  >
+                    988 - Crisis Lifeline
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
         <div className="min-w-full text-sm flex flex-col">
           {locations.slice(0, 7).map((location, i) => (
             <div
@@ -100,10 +130,14 @@ function App() {
                           <div className="flex items-center gap-1">
                             <Clock
                               strokeWidth={1.5}
-                              className="h-3 w-3 text-green-600"
+                              className={`h-3 w-3 ${location.is_open_now ? 'text-green-600' : 'text-gray-400'}`}
                             />
                             <span className="text-xs">
-                              {location.hours_today.start} - {location.hours_today.end}
+                              {location.is_open_now ? (
+                                <span className="text-green-700 font-medium">{location.open_status}</span>
+                              ) : (
+                                <span className="text-gray-600">{location.open_status || `${location.hours_today.start} - ${location.hours_today.end}`}</span>
+                              )}
                             </span>
                           </div>
                         )}
