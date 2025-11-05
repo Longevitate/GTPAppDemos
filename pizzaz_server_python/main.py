@@ -450,6 +450,7 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                         "hours_today": loc.get("hours_today"),
                         "is_express_care": loc.get("is_express_care"),
                         "is_urgent_care": loc.get("is_urgent_care"),
+                        "services": loc.get("services", []),
                     }
                     processed_locations.append(processed_loc)
             
@@ -491,6 +492,7 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                     "hours_today": loc.get("hours_today"),
                     "is_express_care": loc.get("is_express_care"),
                     "is_urgent_care": loc.get("is_urgent_care"),
+                    "services": loc.get("services", []),
                 }
                 processed_locations.append(processed_loc)
         
