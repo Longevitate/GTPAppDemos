@@ -747,6 +747,11 @@ app.routes.insert(0, Route('/api/care-locations', get_care_locations_endpoint))
 # Mount static files for widget assets
 app.mount("/assets", StaticFiles(directory=str(ASSETS_DIR)), name="assets")
 
+# Mount static files (logos, images, etc.)
+STATIC_DIR = Path(__file__).parent.parent / "static"
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
 try:
     from starlette.middleware.cors import CORSMiddleware
 

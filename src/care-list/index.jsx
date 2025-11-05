@@ -34,7 +34,7 @@ function App() {
         <div className="flex flex-row items-center gap-4 sm:gap-4 border-b border-black/5 py-4">
           <div className="sm:w-18 w-16 aspect-square rounded-xl bg-white flex items-center justify-center p-2">
             <img
-              src="/assets/Prov.png"
+              src="/static/Prov.png"
               alt="Providence Health"
               className="w-full h-full object-contain"
             />
