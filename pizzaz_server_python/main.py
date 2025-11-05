@@ -826,7 +826,14 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                 if processed_locations and processed_locations[0].get('match_reason'):
                     print(f"Example match: {processed_locations[0].get('match_reason')}")
         
+        # Determine API base URL for widget to use
+        # In production (Azure), use the deployed URL
+        # In development, use localhost
+        import os
+        api_base_url = os.environ.get("API_BASE_URL", "https://provgpt.azurewebsites.net")
+        
         structured_content = {
+            "api_base_url": api_base_url,
             "reason": payload.reason or "general care",
             "location": payload.location or "unspecified",
             "user_coords": user_coords,

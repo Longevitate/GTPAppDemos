@@ -8,7 +8,7 @@ import { useOpenAiGlobal } from "../use-openai-global";
 const WIDGET_VERSION = "4.0.0-timeslot-booking";
 
 // TimeSlots component for displaying and booking available slots
-function TimeSlots({ location }) {
+function TimeSlots({ location, apiBaseUrl }) {
   const [dates, setDates] = useState([]);
   const [selectedDateIndex, setSelectedDateIndex] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -25,10 +25,11 @@ function TimeSlots({ location }) {
     setError(null);
     
     try {
-      // Get API base URL from current location or use localhost for dev
-      const apiBase = window.location.hostname === 'localhost' 
-        ? 'http://localhost:8000' 
-        : window.location.origin;
+      // Use API base URL from toolOutput (passed as prop)
+      // Fallback to localhost for local development
+      const apiBase = apiBaseUrl || 'http://localhost:8000';
+      
+      console.log(`[TimeSlots] Fetching from: ${apiBase}/api/timeslots?location_code=${location.booking_wheelhouse}`);
       
       const response = await fetch(
         `${apiBase}/api/timeslots?location_code=${encodeURIComponent(location.booking_wheelhouse)}`
@@ -182,6 +183,7 @@ function App() {
     
     if (toolOutput && toolOutput.locations && toolOutput.locations.length > 0) {
       console.log(`[Care Widget] ✅ Received ${toolOutput.locations.length} locations from toolOutput`);
+      console.log('[Care Widget] API Base URL:', toolOutput.api_base_url);
       console.log('[Care Widget] First location:', toolOutput.locations[0].name, '@', toolOutput.locations[0].distance, 'mi');
       console.log('[Care Widget] User location:', toolOutput.location);
       console.log('[Care Widget] User coords:', toolOutput.user_coords);
@@ -358,7 +360,7 @@ function App() {
               
               {/* Timeslots Section */}
               {isExpanded && location.booking_wheelhouse && (
-                <TimeSlots location={location} />
+                <TimeSlots location={location} apiBaseUrl={toolOutput?.api_base_url} />
               )}
             </div>
             );
