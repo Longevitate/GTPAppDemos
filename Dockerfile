@@ -37,13 +37,15 @@ RUN pnpm run build
 # Expose the port that Azure Web App expects
 EXPOSE 8080
 
-# Create startup script to run the MCP server on the correct port
+# Create startup script to run the master app (hosting both MCP servers) on the correct port
 RUN echo '#!/bin/sh' > /app/start.sh && \
-    echo 'echo "Starting MCP server..."' >> /app/start.sh && \
+    echo 'echo "Starting Providence Care MCP Servers..."' >> /app/start.sh && \
+    echo 'echo "  - Main Server (UI): /mcp"' >> /app/start.sh && \
+    echo 'echo "  - Text-Only Server: /textOnly/mcp"' >> /app/start.sh && \
     echo '. /opt/venv/bin/activate' >> /app/start.sh && \
     echo 'PORT=${PORT:-8080}' >> /app/start.sh && \
     echo 'echo "Listening on port $PORT"' >> /app/start.sh && \
-    echo 'uvicorn pizzaz_server_python.main:app --host 0.0.0.0 --port $PORT' >> /app/start.sh && \
+    echo 'uvicorn pizzaz_server_python.master_app:app --host 0.0.0.0 --port $PORT' >> /app/start.sh && \
     chmod +x /app/start.sh
 
 # Start the server

@@ -108,6 +108,29 @@ uvicorn solar-system_server_python.main:app --port 8000
 
 You can reuse the same virtual environment for all Python servers—install the dependencies once and run whichever entry point you need.
 
+### Providence Care (Dual MCP Server Setup)
+
+The Providence Care application hosts **two MCP servers** on the same instance:
+
+1. **Main Server (UI-enabled)**: `https://provgpt.azurewebsites.net/mcp`
+2. **Text-Only Server**: `https://provgpt.azurewebsites.net/textOnly/mcp`
+
+To run both servers locally:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r pizzaz_server_python/requirements.txt
+pnpm run build
+python pizzaz_server_python/master_app.py
+```
+
+This starts both servers on port 8000:
+- Main (UI): `http://localhost:8000/mcp`
+- Text-Only: `http://localhost:8000/textOnly/mcp`
+
+See [DUAL_SERVER_SETUP.md](./DUAL_SERVER_SETUP.md) for detailed information about the dual-server architecture.
+
 ## Testing in ChatGPT
 
 To add these apps to ChatGPT, enable [developer mode](https://platform.openai.com/docs/guides/developer-mode), and add your apps in Settings > Connectors.
