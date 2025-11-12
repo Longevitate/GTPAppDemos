@@ -23,7 +23,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from starlette.staticfiles import StaticFiles
 
 # Import shared utilities
-from .shared import (
+from shared import (
     detect_er_red_flags,
     detect_service_requirements,
     fetch_providence_locations,

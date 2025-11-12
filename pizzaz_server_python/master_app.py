@@ -16,14 +16,14 @@ from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
 # Import the main MCP server app (with widgets)
-from .main import app as main_mcp_app
-from .main import (
+from pizzaz_server_python.main import app as main_mcp_app
+from pizzaz_server_python.main import (
     get_care_locations_endpoint,
     get_timeslots_endpoint,
 )
 
 # Import the text-only MCP server app
-from .text_only_server import app as text_only_mcp_app
+from pizzaz_server_python.text_only_server import app as text_only_mcp_app
 
 
 async def health_check(request):
@@ -136,5 +136,4 @@ if __name__ == "__main__":
     print("=" * 60)
     
     uvicorn.run("master_app:app", host="0.0.0.0", port=8000, reload=True)
-
 
