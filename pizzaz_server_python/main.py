@@ -14,25 +14,17 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List
-import os
+import math
 import httpx
+import json
+import uuid
+from datetime import datetime, timedelta
+from typing import Dict, Any, Optional
 
 import mcp.types as types
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from starlette.staticfiles import StaticFiles
-
-# Import shared utilities
-from shared import (
-    detect_er_red_flags,
-    detect_service_requirements,
-    fetch_providence_locations,
-    haversine_distance,
-    is_location_open_now,
-    location_has_service,
-    location_matches_reason,
-    zip_to_coords,
-)
 
 
 @dataclass(frozen=True)
@@ -123,6 +115,316 @@ WIDGETS_BY_ID: Dict[str, PizzazWidget] = {
 WIDGETS_BY_URI: Dict[str, PizzazWidget] = {
     widget.template_uri: widget for widget in widgets
 }
+
+
+# Load cached ZIP codes
+_ZIP_COORDS_CACHE: Dict[str, tuple[float, float]] | None = None
+
+def _load_zip_coords() -> Dict[str, tuple[float, float]]:
+    """Load ZIP code coordinates from cache file."""
+    global _ZIP_COORDS_CACHE
+    if _ZIP_COORDS_CACHE is None:
+        cache_file = Path(__file__).parent / "zip_coords_cache.json"
+        if cache_file.exists():
+            with open(cache_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                # Convert lists to tuples
+                _ZIP_COORDS_CACHE = {k: tuple(v) for k, v in data.items()}
+        else:
+            print(f"Warning: ZIP coords cache not found at {cache_file}")
+            _ZIP_COORDS_CACHE = {}
+    return _ZIP_COORDS_CACHE
+
+
+# Load cached Providence locations
+_PROVIDENCE_LOCATIONS_CACHE: List[Dict[str, Any]] | None = None
+
+def _load_providence_locations() -> List[Dict[str, Any]]:
+    """Load Providence locations from cache file."""
+    global _PROVIDENCE_LOCATIONS_CACHE
+    if _PROVIDENCE_LOCATIONS_CACHE is None:
+        cache_file = Path(__file__).parent / "providence_locations_cache.json"
+        if cache_file.exists():
+            with open(cache_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                _PROVIDENCE_LOCATIONS_CACHE = data.get("locations", [])
+                print(f"Loaded {len(_PROVIDENCE_LOCATIONS_CACHE)} Providence locations from cache")
+        else:
+            print(f"Warning: Providence locations cache not found at {cache_file}")
+            _PROVIDENCE_LOCATIONS_CACHE = []
+    return _PROVIDENCE_LOCATIONS_CACHE
+
+
+def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Calculate the great circle distance in miles between two points on Earth."""
+    # Convert to radians
+    lat1_rad, lon1_rad = math.radians(lat1), math.radians(lon1)
+    lat2_rad, lon2_rad = math.radians(lat2), math.radians(lon2)
+    
+    # Haversine formula
+    dlat = lat2_rad - lat1_rad
+    dlon = lon2_rad - lon1_rad
+    a = math.sin(dlat / 2) ** 2 + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon / 2) ** 2
+    c = 2 * math.asin(math.sqrt(a))
+    
+    # Radius of Earth in miles
+    radius_miles = 3959.0
+    return c * radius_miles
+
+
+def zip_to_coords(zip_code: str) -> tuple[float, float] | None:
+    """Convert a ZIP code to lat/lon coordinates using cached data."""
+    clean_zip = zip_code.strip().split('-')[0][:5]
+    zip_coords = _load_zip_coords()
+    return zip_coords.get(clean_zip)
+
+
+def detect_er_red_flags(reason: str) -> tuple[bool, str | None]:
+    """
+    Detect life-threatening symptoms that require immediate ER attention.
+    
+    Returns:
+        (is_emergency, warning_message): True with message if emergency detected
+    """
+    if not reason or not reason.strip():
+        return (False, None)
+    
+    reason_lower = reason.lower().strip()
+    
+    # Define emergency red flags with their warning messages
+    red_flags = [
+        # Cardiac
+        (["chest pain", "chest pressure", "chest tightness", "heart attack"], 
+         "chest pain or pressure - this could be a heart attack"),
+        
+        # Respiratory
+        (["difficulty breathing", "can't breathe", "cannot breathe", "shortness of breath", "severe breathing"],
+         "difficulty breathing - this requires immediate attention"),
+        
+        # Neurological
+        (["stroke", "face drooping", "arm weakness", "slurred speech", "severe headache", "worst headache"],
+         "stroke symptoms - time is critical"),
+        (["loss of consciousness", "unconscious", "passed out", "unresponsive"],
+         "loss of consciousness - call 911 immediately"),
+        (["severe confusion", "altered mental state"],
+         "altered mental state - needs immediate evaluation"),
+        
+        # Bleeding/Trauma
+        (["severe bleeding", "heavy bleeding", "bleeding won't stop", "severe trauma", "severe injury"],
+         "severe bleeding or trauma - needs emergency care"),
+        (["severe head injury", "head trauma"],
+         "head injury - needs immediate evaluation"),
+        
+        # Allergic/Respiratory
+        (["severe allergic reaction", "anaphylaxis", "throat swelling", "tongue swelling"],
+         "severe allergic reaction - use EpiPen if available and call 911"),
+        
+        # Mental Health
+        (["suicidal", "want to die", "kill myself", "suicide"],
+         "mental health crisis - call 988 Suicide & Crisis Lifeline or 911"),
+        
+        # Other Critical
+        (["severe abdominal pain", "severe stomach pain"],
+         "severe abdominal pain - could indicate serious condition"),
+        (["coughing up blood", "vomiting blood", "blood in stool"],
+         "bleeding from body - needs emergency evaluation"),
+        (["seizure", "convulsion"],
+         "seizure - needs immediate medical attention"),
+    ]
+    
+    # Check for red flags
+    for keywords, warning in red_flags:
+        for keyword in keywords:
+            if keyword in reason_lower:
+                return (True, warning)
+    
+    return (False, None)
+
+
+def detect_service_requirements(reason: str) -> list[str]:
+    """
+    Detect what services might be needed based on the reason.
+    
+    Returns:
+        List of required services (e.g., ['x-ray', 'lab'])
+    """
+    if not reason or not reason.strip():
+        return []
+    
+    reason_lower = reason.lower().strip()
+    requirements = []
+    
+    # X-ray requirements
+    xray_keywords = ["fracture", "broken bone", "sprain", "twisted ankle", "chest x-ray", "x-ray"]
+    if any(kw in reason_lower for kw in xray_keywords):
+        requirements.append("x-ray")
+    
+    # Lab requirements
+    lab_keywords = ["blood test", "lab work", "test results", "cholesterol", "std test", "sti test"]
+    if any(kw in reason_lower for kw in lab_keywords):
+        requirements.append("lab")
+    
+    # Procedure room (stitches, wound care)
+    procedure_keywords = ["stitches", "sutures", "deep cut", "wound", "laceration"]
+    if any(kw in reason_lower for kw in procedure_keywords):
+        requirements.append("procedure")
+    
+    return requirements
+
+
+def is_location_open_now(location: Dict[str, Any]) -> tuple[bool, str]:
+    """
+    Check if a location is currently open.
+    
+    Returns:
+        (is_open, status_text): True with status if open, False with reason if closed
+    """
+    from datetime import datetime
+    
+    hours_today = location.get("hours_today")
+    if not hours_today:
+        return (False, "Hours unavailable")
+    
+    # Check if it's 24 hours
+    if hours_today.get("is24hours"):
+        return (True, "Open 24 hours")
+    
+    start_time = hours_today.get("start")
+    end_time = hours_today.get("end")
+    
+    if not start_time or not end_time:
+        return (False, "Hours unavailable")
+    
+    # Parse times (format: "8:00 am" or "8:00 pm")
+    try:
+        now = datetime.now()
+        current_time = now.time()
+        
+        # Simple time parsing
+        def parse_time(time_str):
+            time_str = time_str.strip().lower()
+            parts = time_str.replace("am", "").replace("pm", "").strip().split(":")
+            hour = int(parts[0])
+            minute = int(parts[1]) if len(parts) > 1 else 0
+            
+            # Convert to 24-hour format
+            if "pm" in time_str and hour != 12:
+                hour += 12
+            elif "am" in time_str and hour == 12:
+                hour = 0
+            
+            return hour, minute
+        
+        start_hour, start_min = parse_time(start_time)
+        end_hour, end_min = parse_time(end_time)
+        
+        start = datetime.now().replace(hour=start_hour, minute=start_min, second=0)
+        end = datetime.now().replace(hour=end_hour, minute=end_min, second=0)
+        
+        # Handle overnight hours (e.g., 8pm - 2am)
+        if end < start:
+            if current_time >= start.time() or current_time <= end.time():
+                return (True, "Open now")
+        else:
+            if start.time() <= current_time <= end.time():
+                return (True, "Open now")
+        
+        # Check if opens soon (within 1 hour)
+        if current_time < start.time():
+            time_diff = (start - datetime.now()).total_seconds() / 60
+            if time_diff <= 60:
+                return (False, f"Opens at {start_time}")
+        
+        return (False, f"Closed - Opens {start_time}")
+        
+    except Exception as e:
+        print(f"Error parsing hours: {e}")
+        return (False, "Hours unavailable")
+
+
+def location_has_service(location: Dict[str, Any], service_type: str) -> bool:
+    """
+    Check if a location has a specific service (x-ray, lab, procedure room).
+    """
+    services = location.get("services", [])
+    other_services = location.get("other", [])
+    
+    service_type_lower = service_type.lower()
+    
+    # Check in services array
+    for service_cat in services:
+        if service_cat.get("name", "").lower() == "other":
+            for item in service_cat.get("values", []):
+                item_val = item.get("val", "").lower()
+                if service_type_lower == "x-ray" and "x-ray" in item_val:
+                    return True
+                if service_type_lower == "lab" and ("lab" in item_val or "laboratory" in item_val):
+                    return True
+                if service_type_lower == "procedure" and ("procedure" in item_val or "minor injuries" in item_val):
+                    return True
+    
+    return False
+
+
+def location_matches_reason(location: Dict[str, Any], reason: str) -> tuple[bool, str | None]:
+    """
+    Check if a location offers services matching the user's reason for visit.
+    
+    Returns:
+        (matches, match_description): True if matches with description of what matched,
+                                       False with None if no match
+    """
+    if not reason or not reason.strip():
+        # No reason provided, all locations match
+        return (True, None)
+    
+    reason_lower = reason.lower().strip()
+    services = location.get("services", [])
+    
+    # Check each service category
+    for service_category in services:
+        category_name = service_category.get("name", "")
+        values = service_category.get("values", [])
+        
+        for service_item in values:
+            service_val = service_item.get("val", "").lower()
+            
+            # Check for fuzzy match using simple word overlap
+            reason_words = set(reason_lower.split())
+            service_words = set(service_val.split())
+            
+            # If there's significant word overlap, it's a match
+            common_words = reason_words & service_words
+            if common_words:
+                return (True, reason)  # Return the user's original reason
+            
+            # Also check if reason is contained in service or vice versa
+            if reason_lower in service_val or service_val in reason_lower:
+                return (True, reason)  # Return the user's original reason
+    
+    # No match found
+    return (False, None)
+
+
+async def fetch_providence_locations() -> List[Dict[str, Any]]:
+    """Get Providence care locations from cache (with API fallback)."""
+    # Try cache first
+    cached_locations = _load_providence_locations()
+    if cached_locations:
+        return cached_locations
+    
+    # Fallback to API if cache is empty
+    print("Cache empty, fetching from API...")
+    url = "https://providencekyruus.azurewebsites.net/api/searchlocationsbyservices"
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+            data = response.json()
+            return data.get("locations", [])
+    except Exception as e:
+        print(f"Error fetching Providence locations from API: {e}")
+        return []
 
 
 class PizzaInput(BaseModel):
