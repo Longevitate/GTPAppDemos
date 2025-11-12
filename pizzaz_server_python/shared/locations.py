@@ -1,0 +1,196 @@
+"""Providence care locations management and filtering."""
+
+from __future__ import annotations
+
+import json
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List
+
+import httpx
+
+
+# Load cached Providence locations
+_PROVIDENCE_LOCATIONS_CACHE: List[Dict[str, Any]] | None = None
+
+
+def _load_providence_locations() -> List[Dict[str, Any]]:
+    """Load Providence locations from cache file."""
+    global _PROVIDENCE_LOCATIONS_CACHE
+    if _PROVIDENCE_LOCATIONS_CACHE is None:
+        cache_file = Path(__file__).parent.parent / "providence_locations_cache.json"
+        if cache_file.exists():
+            with open(cache_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                _PROVIDENCE_LOCATIONS_CACHE = data.get("locations", [])
+                print(f"Loaded {len(_PROVIDENCE_LOCATIONS_CACHE)} Providence locations from cache")
+        else:
+            print(f"Warning: Providence locations cache not found at {cache_file}")
+            _PROVIDENCE_LOCATIONS_CACHE = []
+    return _PROVIDENCE_LOCATIONS_CACHE
+
+
+async def fetch_providence_locations() -> List[Dict[str, Any]]:
+    """Get Providence care locations from cache (with API fallback)."""
+    # Try cache first
+    cached_locations = _load_providence_locations()
+    if cached_locations:
+        return cached_locations
+    
+    # Fallback to API if cache is empty
+    print("Cache empty, fetching from API...")
+    url = "https://providencekyruus.azurewebsites.net/api/searchlocationsbyservices"
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+            data = response.json()
+            return data.get("locations", [])
+    except Exception as e:
+        print(f"Error fetching Providence locations from API: {e}")
+        return []
+
+
+def is_location_open_now(location: Dict[str, Any]) -> tuple[bool, str]:
+    """
+    Check if a location is currently open.
+    
+    Args:
+        location: Location dictionary with hours_today field
+    
+    Returns:
+        (is_open, status_text): True with status if open, False with reason if closed
+    """
+    hours_today = location.get("hours_today")
+    if not hours_today:
+        return (False, "Hours unavailable")
+    
+    # Check if it's 24 hours
+    if hours_today.get("is24hours"):
+        return (True, "Open 24 hours")
+    
+    start_time = hours_today.get("start")
+    end_time = hours_today.get("end")
+    
+    if not start_time or not end_time:
+        return (False, "Hours unavailable")
+    
+    # Parse times (format: "8:00 am" or "8:00 pm")
+    try:
+        now = datetime.now()
+        current_time = now.time()
+        
+        # Simple time parsing
+        def parse_time(time_str):
+            time_str = time_str.strip().lower()
+            parts = time_str.replace("am", "").replace("pm", "").strip().split(":")
+            hour = int(parts[0])
+            minute = int(parts[1]) if len(parts) > 1 else 0
+            
+            # Convert to 24-hour format
+            if "pm" in time_str and hour != 12:
+                hour += 12
+            elif "am" in time_str and hour == 12:
+                hour = 0
+            
+            return hour, minute
+        
+        start_hour, start_min = parse_time(start_time)
+        end_hour, end_min = parse_time(end_time)
+        
+        start = datetime.now().replace(hour=start_hour, minute=start_min, second=0)
+        end = datetime.now().replace(hour=end_hour, minute=end_min, second=0)
+        
+        # Handle overnight hours (e.g., 8pm - 2am)
+        if end < start:
+            if current_time >= start.time() or current_time <= end.time():
+                return (True, "Open now")
+        else:
+            if start.time() <= current_time <= end.time():
+                return (True, "Open now")
+        
+        # Check if opens soon (within 1 hour)
+        if current_time < start.time():
+            time_diff = (start - datetime.now()).total_seconds() / 60
+            if time_diff <= 60:
+                return (False, f"Opens at {start_time}")
+        
+        return (False, f"Closed - Opens {start_time}")
+        
+    except Exception as e:
+        print(f"Error parsing hours: {e}")
+        return (False, "Hours unavailable")
+
+
+def location_has_service(location: Dict[str, Any], service_type: str) -> bool:
+    """
+    Check if a location has a specific service (x-ray, lab, procedure room).
+    
+    Args:
+        location: Location dictionary
+        service_type: Type of service ('x-ray', 'lab', 'procedure')
+    
+    Returns:
+        True if location has the service
+    """
+    services = location.get("services", [])
+    
+    service_type_lower = service_type.lower()
+    
+    # Check in services array
+    for service_cat in services:
+        if service_cat.get("name", "").lower() == "other":
+            for item in service_cat.get("values", []):
+                item_val = item.get("val", "").lower()
+                if service_type_lower == "x-ray" and "x-ray" in item_val:
+                    return True
+                if service_type_lower == "lab" and ("lab" in item_val or "laboratory" in item_val):
+                    return True
+                if service_type_lower == "procedure" and ("procedure" in item_val or "minor injuries" in item_val):
+                    return True
+    
+    return False
+
+
+def location_matches_reason(location: Dict[str, Any], reason: str) -> tuple[bool, str | None]:
+    """
+    Check if a location offers services matching the user's reason for visit.
+    
+    Args:
+        location: Location dictionary
+        reason: User's reason for seeking care
+    
+    Returns:
+        (matches, match_description): True if matches with description of what matched,
+                                       False with None if no match
+    """
+    if not reason or not reason.strip():
+        # No reason provided, all locations match
+        return (True, None)
+    
+    reason_lower = reason.lower().strip()
+    services = location.get("services", [])
+    
+    # Check each service category
+    for service_category in services:
+        values = service_category.get("values", [])
+        
+        for service_item in values:
+            service_val = service_item.get("val", "").lower()
+            
+            # Check for fuzzy match using simple word overlap
+            reason_words = set(reason_lower.split())
+            service_words = set(service_val.split())
+            
+            # If there's significant word overlap, it's a match
+            common_words = reason_words & service_words
+            if common_words:
+                return (True, reason)  # Return the user's original reason
+            
+            # Also check if reason is contained in service or vice versa
+            if reason_lower in service_val or service_val in reason_lower:
+                return (True, reason)  # Return the user's original reason
+    
+    # No match found
+    return (False, None)
+
