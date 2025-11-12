@@ -17,7 +17,7 @@ import mcp.types as types
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from shared import (
+from .shared import (
     detect_er_red_flags,
     detect_service_requirements,
     fetch_providence_locations,
@@ -402,4 +402,5 @@ if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run("text_only_server:app", host="0.0.0.0", port=8001)
+
 
