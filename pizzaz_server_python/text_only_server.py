@@ -382,22 +382,32 @@ def create_text_only_app():
     return mcp.streamable_http_app()
 
 
-# Create the app instance
-app = create_text_only_app()
+# Lazy app creation to avoid import issues
+_app = None
 
-# Add CORS middleware
-try:
-    from starlette.middleware.cors import CORSMiddleware
+def get_app():
+    """Get or create the app instance."""
+    global _app
+    if _app is None:
+        _app = create_text_only_app()
+        
+        # Add CORS middleware
+        try:
+            from starlette.middleware.cors import CORSMiddleware
+            _app.add_middleware(
+                CORSMiddleware,
+                allow_origins=["*"],
+                allow_methods=["*"],
+                allow_headers=["*"],
+                allow_credentials=False,
+            )
+        except Exception:
+            pass
+    
+    return _app
 
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_methods=["*"],
-        allow_headers=["*"],
-        allow_credentials=False,
-    )
-except Exception:
-    pass
+# Create app for ASGI servers
+app = get_app()
 
 
 if __name__ == "__main__":
@@ -405,5 +415,5 @@ if __name__ == "__main__":
 
     print("🚀 Starting Text-Only MCP Server")
     print("📍 http://localhost:8001/mcp")
-    uvicorn.run("text_only_server:app", host="0.0.0.0", port=8001, reload=True)
+    uvicorn.run("pizzaz_server_python.text_only_server:app", host="0.0.0.0", port=8001, reload=True)
 
