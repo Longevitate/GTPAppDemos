@@ -3,11 +3,19 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
 
 import httpx
+
+# Try to import semantic matching (optional)
+try:
+    from .semantic_matching import hybrid_location_match
+    SEMANTIC_AVAILABLE = True
+except ImportError:
+    SEMANTIC_AVAILABLE = False
 
 
 # Load cached Providence locations
@@ -152,9 +160,82 @@ def location_has_service(location: Dict[str, Any], service_type: str) -> bool:
     return False
 
 
+def _keyword_location_match(location: Dict[str, Any], reason: str) -> tuple[bool, str | None]:
+    """
+    Keyword-based matching with synonyms and partial word matching.
+    
+    This is the core matching logic that uses expanded synonyms and fuzzy string matching.
+    """
+    if not reason or not reason.strip():
+        # No reason provided, all locations match
+        return (True, None)
+    
+    reason_lower = reason.lower().strip()
+    services = location.get("services", [])
+    
+    # Medical term synonyms for better matching
+    synonym_map = {
+        "urgent": ["immediate", "acute", "emergency", "same-day", "walk-in", "same", "day", "access"],
+        "emergency": ["urgent", "critical", "severe", "acute", "er", "life-threatening"],
+        "primary": ["family", "general", "routine", "preventive", "wellness"],
+        "lab": ["laboratory", "blood", "test", "diagnostic", "testing"],
+        "imaging": ["x-ray", "ct", "mri", "scan", "radiology", "ultrasound"],
+        "therapy": ["physical", "occupational", "rehab", "rehabilitation"],
+        "mental": ["behavioral", "psychology", "psychiatry", "counseling"],
+        "pediatric": ["children", "child", "kids", "infant", "adolescent"],
+        "women": ["obstetric", "gynecology", "maternity", "pregnancy"],
+        "senior": ["geriatric", "elderly", "aging"],
+        "care": ["clinic", "facility", "location", "center", "same-day", "walk-in"],
+    }
+    
+    # Expand reason with synonyms
+    reason_words = set(reason_lower.split())
+    expanded_reason_words = set(reason_words)
+    for word in reason_words:
+        if word in synonym_map:
+            expanded_reason_words.update(synonym_map[word])
+    
+    # Check each service category
+    for service_category in services:
+        values = service_category.get("values", [])
+        
+        for service_item in values:
+            service_val = service_item.get("val", "").lower()
+            service_words = set(service_val.split())
+            
+            # 1. Check for word overlap (including synonyms)
+            common_words = expanded_reason_words & service_words
+            if common_words:
+                return (True, reason)
+            
+            # 2. Check if reason is substring of service or vice versa
+            if reason_lower in service_val or service_val in reason_lower:
+                return (True, reason)
+            
+            # 3. Check for partial word matches (e.g., "urgent" matches "urgency")
+            for reason_word in expanded_reason_words:
+                if len(reason_word) >= 4:  # Only for words 4+ chars
+                    for service_word in service_words:
+                        if len(service_word) >= 4:
+                            # Check if one is a prefix of the other
+                            if reason_word.startswith(service_word[:4]) or service_word.startswith(reason_word[:4]):
+                                return (True, reason)
+    
+    # Still no match - be very lenient and return True if it's a general query
+    general_terms = ["care", "help", "medical", "health", "doctor", "clinic", "hospital"]
+    if any(term in reason_lower for term in general_terms):
+        return (True, reason)
+    
+    # No match found
+    return (False, None)
+
+
 def location_matches_reason(location: Dict[str, Any], reason: str) -> tuple[bool, str | None]:
     """
     Check if a location offers services matching the user's reason for visit.
+    
+    Uses hybrid matching: semantic AI-based matching when available (set USE_SEMANTIC_MATCHING=true),
+    otherwise falls back to keyword matching with synonyms.
     
     Args:
         location: Location dictionary
@@ -164,33 +245,14 @@ def location_matches_reason(location: Dict[str, Any], reason: str) -> tuple[bool
         (matches, match_description): True if matches with description of what matched,
                                        False with None if no match
     """
-    if not reason or not reason.strip():
-        # No reason provided, all locations match
-        return (True, None)
+    # Use semantic matching if enabled
+    if SEMANTIC_AVAILABLE and os.getenv("USE_SEMANTIC_MATCHING", "false").lower() == "true":
+        try:
+            return hybrid_location_match(location, reason, _keyword_location_match)
+        except Exception:
+            # Fall back to keyword matching on any error
+            pass
     
-    reason_lower = reason.lower().strip()
-    services = location.get("services", [])
-    
-    # Check each service category
-    for service_category in services:
-        values = service_category.get("values", [])
-        
-        for service_item in values:
-            service_val = service_item.get("val", "").lower()
-            
-            # Check for fuzzy match using simple word overlap
-            reason_words = set(reason_lower.split())
-            service_words = set(service_val.split())
-            
-            # If there's significant word overlap, it's a match
-            common_words = reason_words & service_words
-            if common_words:
-                return (True, reason)  # Return the user's original reason
-            
-            # Also check if reason is contained in service or vice versa
-            if reason_lower in service_val or service_val in reason_lower:
-                return (True, reason)  # Return the user's original reason
-    
-    # No match found
-    return (False, None)
+    # Use keyword matching
+    return _keyword_location_match(location, reason)
 
