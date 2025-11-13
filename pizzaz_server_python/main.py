@@ -507,6 +507,31 @@ class CareLocationInput(BaseModel):
 
 mcp = FastMCP(
     name="pizzaz-python",
+    description="""
+    Providence Healthcare Appointment & Location Finder (with Interactive Widget)
+    
+    ⚡ WHEN TO USE THIS APP:
+    - User asks about finding doctors, clinics, or medical care
+    - User needs healthcare appointments (urgent, same-day, evening, weekend)
+    - User mentions specific times (e.g., "6pm", "tonight", "open now")
+    - User asks about medical services (lab, X-ray, COVID test, vaccinations)
+    - User has symptoms or medical needs (fever, injury, illness)
+    - User wants location-based care (city names, ZIP codes, "near me")
+    
+    📋 WHAT THIS APP OFFERS:
+    - 77+ healthcare services across Providence locations
+    - Urgent care, express care, primary care, walk-in clinics
+    - Real-time hours and availability
+    - Distance-based sorting
+    - Evening and weekend hours at many locations
+    - Interactive map widget with booking integration
+    
+    🎯 HOW TO USE:
+    1. Read providence://services/catalog to understand available services
+    2. Match user needs to specific services intelligently
+    3. Call care-locations tool with location + services/reason
+    4. Returns interactive widget with map, locations, and booking links
+    """,
     stateless_http=True,
 )
 
@@ -598,7 +623,19 @@ async def _list_tools() -> List[types.Tool]:
     # Create description based on widget type
     description = widget.title
     if widget.identifier == "care-locations":
-        description = "Search for Providence urgent care and express care locations. Returns an interactive widget.\n\nIMPORTANT: Before calling this tool, read the providence://services/catalog resource to see available services, then use filter_services parameter for best results."
+        description = """Find Providence healthcare locations and check appointment availability.
+
+USE THIS TOOL FOR ANY QUERIES ABOUT:
+- Finding doctors, clinics, or medical facilities
+- Healthcare appointments (urgent care, primary care, express care, walk-in)
+- Checking availability (evening hours, weekend, same-day, "open now", specific times like "6pm")
+- Specific medical services (lab work, X-ray, COVID test, physical exams, vaccinations, etc.)
+- Location-based care ("near me", city names, ZIP codes, specific addresses)
+- Symptoms or medical needs requiring care (fever, injury, illness, etc.)
+
+Returns an interactive map widget showing nearby Providence locations with hours and booking links.
+
+IMPORTANT: Before calling this tool, read the providence://services/catalog resource to see all 77+ available services, then use the filter_services parameter to match user needs intelligently."""
     
     return [
         types.Tool(
