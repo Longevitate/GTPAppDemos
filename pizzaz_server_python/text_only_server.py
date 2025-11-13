@@ -36,7 +36,7 @@ class CareLocationInput(BaseModel):
     )
     location: str | None = Field(
         default="",
-        description="User location or ZIP code (optional).",
+        description="User location as ZIP code (e.g., '97202') or city name (e.g., 'Everett WA', 'Portland OR'). Optional.",
     )
     filter_services: List[str] | None = Field(
         default=None,
@@ -55,7 +55,7 @@ CARE_LOCATION_INPUT_SCHEMA: Dict[str, Any] = {
         },
         "location": {
             "type": "string",
-            "description": "User location or ZIP code (optional).",
+            "description": "User location as ZIP code (e.g., '97202') or city name (e.g., 'Everett WA', 'Portland OR'). Optional.",
         },
         "filter_services": {
             "type": "array",
@@ -215,7 +215,7 @@ def create_text_only_app():
             types.Tool(
                 name="care-locations-text",
                 title="Find Providence Care Locations (Text)",
-                description="Search for Providence urgent care and express care locations. Returns formatted text output.",
+                description="Search for Providence urgent care and express care locations. Returns formatted text output.\n\nIMPORTANT: Before calling this tool, read the providence://services/catalog-text resource to see available services, then use filter_services parameter for best results.",
                 inputSchema=CARE_LOCATION_INPUT_SCHEMA,
                 annotations={
                     "destructiveHint": False,

@@ -27,19 +27,54 @@ def _load_zip_coords() -> Dict[str, tuple[float, float]]:
     return _ZIP_COORDS_CACHE
 
 
-def zip_to_coords(zip_code: str) -> tuple[float, float] | None:
+def zip_to_coords(location_input: str) -> tuple[float, float] | None:
     """
-    Convert a ZIP code to lat/lon coordinates using cached data.
+    Convert a ZIP code OR city name to lat/lon coordinates using cached data.
+    
+    Handles multiple formats:
+    - ZIP codes: "97202", "97202-1234"
+    - City names: "Everett WA", "Everett, WA", "Portland"
     
     Args:
-        zip_code: ZIP code string (e.g., "97202" or "97202-1234")
+        location_input: ZIP code or city name string
     
     Returns:
         (latitude, longitude) tuple or None if not found
     """
-    clean_zip = zip_code.strip().split('-')[0][:5]
-    zip_coords = _load_zip_coords()
-    return zip_coords.get(clean_zip)
+    location_input = location_input.strip()
+    
+    # Try as ZIP code first
+    clean_zip = location_input.split('-')[0][:5]
+    if clean_zip.isdigit() and len(clean_zip) == 5:
+        zip_coords = _load_zip_coords()
+        coords = zip_coords.get(clean_zip)
+        if coords:
+            return coords
+    
+    # Try as city name - look through Providence locations cache
+    try:
+        from .locations import _load_providence_locations
+        locations = _load_providence_locations()
+        
+        # Normalize input for matching (lowercase, remove punctuation)
+        search_term = location_input.lower().replace(',', '').replace('.', '')
+        
+        # Search through location addresses
+        for loc in locations:
+            address = loc.get("address_plain", "").lower()
+            
+            # Check if the search term appears in the address
+            if search_term in address:
+                coords = loc.get("coordinates")
+                if coords and coords.get("lat") and coords.get("lng"):
+                    print(f"📍 Geocoded '{location_input}' via location match to {coords['lat']}, {coords['lng']}")
+                    return (coords["lat"], coords["lng"])
+        
+        print(f"⚠️ Could not geocode '{location_input}' - no ZIP match or city match found")
+        return None
+    except Exception as e:
+        print(f"⚠️ Error during city geocoding: {e}")
+        return None
 
 
 def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:

@@ -492,7 +492,7 @@ class CareLocationInput(BaseModel):
     )
     location: str | None = Field(
         default="",
-        description="User location or ZIP code (optional).",
+        description="User location as ZIP code (e.g., '97202') or city name (e.g., 'Everett WA', 'Portland OR'). Optional.",
     )
     filter_services: List[str] | None = Field(
         default=None,
@@ -554,7 +554,7 @@ CARE_LOCATION_INPUT_SCHEMA: Dict[str, Any] = {
         },
         "location": {
             "type": "string",
-            "description": "User location or ZIP code (optional).",
+            "description": "User location as ZIP code (e.g., '97202') or city name (e.g., 'Everett WA', 'Portland OR'). Optional.",
         },
         "filter_services": {
             "type": "array",
@@ -595,11 +595,16 @@ def _embedded_widget_resource(widget: PizzazWidget) -> types.EmbeddedResource:
 
 @mcp._mcp_server.list_tools()
 async def _list_tools() -> List[types.Tool]:
+    # Create description based on widget type
+    description = widget.title
+    if widget.identifier == "care-locations":
+        description = "Search for Providence urgent care and express care locations. Returns an interactive widget.\n\nIMPORTANT: Before calling this tool, read the providence://services/catalog resource to see available services, then use filter_services parameter for best results."
+    
     return [
         types.Tool(
             name=widget.identifier,
             title=widget.title,
-            description=widget.title,
+            description=description,
             inputSchema=deepcopy(
                 CARE_LOCATION_INPUT_SCHEMA 
                 if widget.identifier == "care-locations" 
