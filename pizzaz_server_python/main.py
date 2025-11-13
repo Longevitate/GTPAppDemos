@@ -155,6 +155,50 @@ def _load_providence_locations() -> List[Dict[str, Any]]:
     return _PROVIDENCE_LOCATIONS_CACHE
 
 
+def get_all_available_services() -> List[str]:
+    """Extract all unique service values from Providence locations."""
+    locations = _load_providence_locations()
+    services_set = set()
+    
+    for location in locations:
+        services = location.get("services", [])
+        for service_category in services:
+            values = service_category.get("values", [])
+            for service_item in values:
+                service_val = service_item.get("val", "").strip()
+                if service_val:
+                    services_set.add(service_val)
+    
+    return sorted(list(services_set))
+
+
+def location_offers_services(location: Dict[str, Any], required_services: List[str]) -> bool:
+    """
+    Check if a location offers all of the required services.
+    
+    Args:
+        location: Location dictionary
+        required_services: List of service names that must all be present
+    
+    Returns:
+        True if location offers ALL required services, False otherwise
+    """
+    if not required_services:
+        return True
+    
+    # Get all services offered by this location (case-insensitive)
+    location_services = set()
+    for service_category in location.get("services", []):
+        for service_item in service_category.get("values", []):
+            service_val = service_item.get("val", "").strip().lower()
+            if service_val:
+                location_services.add(service_val)
+    
+    # Check if all required services are present (case-insensitive)
+    required_lower = [s.strip().lower() for s in required_services]
+    return all(req in location_services for req in required_lower)
+
+
 def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Calculate the great circle distance in miles between two points on Earth."""
     # Convert to radians
@@ -444,11 +488,15 @@ class CareLocationInput(BaseModel):
 
     reason: str | None = Field(
         default="",
-        description="Reason for seeking care (optional).",
+        description="Reason for seeking care (optional). Used for general matching when specific services aren't specified.",
     )
     location: str | None = Field(
         default="",
         description="User location or ZIP code (optional).",
+    )
+    filter_services: List[str] | None = Field(
+        default=None,
+        description="Optional list of specific services to filter by. If provided, only locations offering ALL specified services will be returned.",
     )
 
     model_config = ConfigDict(populate_by_name=True, extra="allow")
@@ -461,6 +509,28 @@ mcp = FastMCP(
     name="pizzaz-python",
     stateless_http=True,
 )
+
+
+# MCP Resource: Expose available healthcare services to ChatGPT
+@mcp.resource("providence://services/catalog")
+def service_catalog() -> str:
+    """
+    Complete catalog of healthcare services available at Providence locations.
+    
+    Use this resource to understand what services are offered, then intelligently
+    match user queries to specific services when calling the care-locations tool.
+    """
+    services = get_all_available_services()
+    
+    # Format as a readable catalog
+    catalog = "# Providence Healthcare Services Catalog\n\n"
+    catalog += f"Total services available: {len(services)}\n\n"
+    catalog += "## Available Services:\n\n"
+    
+    for service in services:
+        catalog += f"- {service}\n"
+    
+    return catalog
 
 
 TOOL_INPUT_SCHEMA: Dict[str, Any] = {
@@ -480,11 +550,16 @@ CARE_LOCATION_INPUT_SCHEMA: Dict[str, Any] = {
     "properties": {
         "reason": {
             "type": "string",
-            "description": "Reason for seeking care (optional).",
+            "description": "Reason for seeking care (optional). Used for general matching when specific services aren't specified.",
         },
         "location": {
             "type": "string",
             "description": "User location or ZIP code (optional).",
+        },
+        "filter_services": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Optional list of specific services to filter by. Read the providence://services/catalog resource to see available services, then match user needs to exact service names. If provided, only locations offering ALL specified services will be returned.",
         }
     },
     "required": [],
@@ -703,13 +778,21 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                     continue
                 seen_ids.add(loc_id)
                 
-                # Check if location matches the reason for visit
-                matches_reason, match_description = location_matches_reason(loc, payload.reason)
-                if payload.reason and payload.reason.strip() and not matches_reason:
-                    # Skip locations that don't match the reason
-                    continue
+                # Priority 1: Check for explicit service filters (ChatGPT-specified)
+                if payload.filter_services:
+                    if not location_offers_services(loc, payload.filter_services):
+                        # Skip locations that don't offer all requested services
+                        continue
+                    # If we have explicit filters, use them as the match description
+                    match_description = f"Offers: {', '.join(payload.filter_services)}"
+                else:
+                    # Priority 2: Check if location matches the reason for visit (keyword matching)
+                    matches_reason, match_description = location_matches_reason(loc, payload.reason)
+                    if payload.reason and payload.reason.strip() and not matches_reason:
+                        # Skip locations that don't match the reason
+                        continue
                 
-                # Check if location has required services
+                # Priority 3: Check if location has detected service requirements (X-ray, lab, etc.)
                 if service_requirements:
                     has_all_services = all(location_has_service(loc, req) for req in service_requirements)
                     if not has_all_services:
@@ -775,15 +858,23 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                     match_info = f" - matches: {loc.get('match_reason')}" if loc.get('match_reason') else ""
                     print(f"  - {loc['name']}: {loc['distance']} mi{match_info}")
         else:
-            # No location provided or couldn't geocode - filter by reason and take first matches
+            # No location provided or couldn't geocode - filter by reason/services and take first matches
             for loc in all_locations:
-                # Check if location matches the reason for visit
-                matches_reason, match_description = location_matches_reason(loc, payload.reason)
-                if payload.reason and payload.reason.strip() and not matches_reason:
-                    # Skip locations that don't match the reason
-                    continue
+                # Priority 1: Check for explicit service filters (ChatGPT-specified)
+                if payload.filter_services:
+                    if not location_offers_services(loc, payload.filter_services):
+                        # Skip locations that don't offer all requested services
+                        continue
+                    # If we have explicit filters, use them as the match description
+                    match_description = f"Offers: {', '.join(payload.filter_services)}"
+                else:
+                    # Priority 2: Check if location matches the reason for visit (keyword matching)
+                    matches_reason, match_description = location_matches_reason(loc, payload.reason)
+                    if payload.reason and payload.reason.strip() and not matches_reason:
+                        # Skip locations that don't match the reason
+                        continue
                 
-                # Check if location has required services
+                # Priority 3: Check if location has detected service requirements (X-ray, lab, etc.)
                 if service_requirements:
                     has_all_services = all(location_has_service(loc, req) for req in service_requirements)
                     if not has_all_services:

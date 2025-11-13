@@ -17,10 +17,12 @@ from .shared import (
     detect_er_red_flags,
     detect_service_requirements,
     fetch_providence_locations,
+    get_all_available_services,
     haversine_distance,
     is_location_open_now,
     location_has_service,
     location_matches_reason,
+    location_offers_services,
     zip_to_coords,
 )
 
@@ -30,11 +32,15 @@ class CareLocationInput(BaseModel):
 
     reason: str | None = Field(
         default="",
-        description="Reason for seeking care (optional).",
+        description="Reason for seeking care (optional). Used for general matching when specific services aren't specified.",
     )
     location: str | None = Field(
         default="",
         description="User location or ZIP code (optional).",
+    )
+    filter_services: List[str] | None = Field(
+        default=None,
+        description="Optional list of specific services to filter by. If provided, only locations offering ALL specified services will be returned.",
     )
 
     model_config = ConfigDict(populate_by_name=True, extra="allow")
@@ -45,11 +51,16 @@ CARE_LOCATION_INPUT_SCHEMA: Dict[str, Any] = {
     "properties": {
         "reason": {
             "type": "string",
-            "description": "Reason for seeking care (optional).",
+            "description": "Reason for seeking care (optional). Used for general matching when specific services aren't specified.",
         },
         "location": {
             "type": "string",
             "description": "User location or ZIP code (optional).",
+        },
+        "filter_services": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Optional list of specific services to filter by. Read the providence://services/catalog-text resource to see available services, then match user needs to exact service names. If provided, only locations offering ALL specified services will be returned.",
         }
     },
     "required": [],
@@ -176,6 +187,27 @@ def create_text_only_app():
         stateless_http=True,
     )
 
+    # MCP Resource: Expose available healthcare services to ChatGPT
+    @mcp.resource("providence://services/catalog-text")
+    def service_catalog_text() -> str:
+        """
+        Complete catalog of healthcare services available at Providence locations.
+        
+        Use this resource to understand what services are offered, then intelligently
+        match user queries to specific services when calling the care-locations-text tool.
+        """
+        services = get_all_available_services()
+        
+        # Format as a readable catalog
+        catalog = "# Providence Healthcare Services Catalog (Text Output)\n\n"
+        catalog += f"Total services available: {len(services)}\n\n"
+        catalog += "## Available Services:\n\n"
+        
+        for service in services:
+            catalog += f"- {service}\n"
+        
+        return catalog
+
     @mcp._mcp_server.list_tools()
     async def _list_tools() -> List[types.Tool]:
         """List available tools."""
@@ -265,12 +297,18 @@ def create_text_only_app():
                     continue
                 seen_ids.add(loc_id)
                 
-                # Check if location matches the reason for visit
-                matches_reason, match_description = location_matches_reason(loc, payload.reason)
-                if payload.reason and payload.reason.strip() and not matches_reason:
-                    continue
+                # Priority 1: Check for explicit service filters (ChatGPT-specified)
+                if payload.filter_services:
+                    if not location_offers_services(loc, payload.filter_services):
+                        continue
+                    match_description = f"Offers: {', '.join(payload.filter_services)}"
+                else:
+                    # Priority 2: Check if location matches the reason for visit (keyword matching)
+                    matches_reason, match_description = location_matches_reason(loc, payload.reason)
+                    if payload.reason and payload.reason.strip() and not matches_reason:
+                        continue
                 
-                # Check if location has required services
+                # Priority 3: Check if location has detected service requirements (X-ray, lab, etc.)
                 if service_requirements:
                     has_all_services = all(location_has_service(loc, req) for req in service_requirements)
                     if not has_all_services:
@@ -326,12 +364,20 @@ def create_text_only_app():
                 for loc in processed_locations[:3]:
                     print(f"  - {loc['name']}: {loc['distance']} mi")
         else:
-            # No location provided - filter by reason and take first matches
+            # No location provided - filter by reason/services and take first matches
             for loc in all_locations:
-                matches_reason, match_description = location_matches_reason(loc, payload.reason)
-                if payload.reason and payload.reason.strip() and not matches_reason:
-                    continue
+                # Priority 1: Check for explicit service filters (ChatGPT-specified)
+                if payload.filter_services:
+                    if not location_offers_services(loc, payload.filter_services):
+                        continue
+                    match_description = f"Offers: {', '.join(payload.filter_services)}"
+                else:
+                    # Priority 2: Check if location matches the reason for visit (keyword matching)
+                    matches_reason, match_description = location_matches_reason(loc, payload.reason)
+                    if payload.reason and payload.reason.strip() and not matches_reason:
+                        continue
                 
+                # Priority 3: Check if location has detected service requirements (X-ray, lab, etc.)
                 if service_requirements:
                     has_all_services = all(location_has_service(loc, req) for req in service_requirements)
                     if not has_all_services:

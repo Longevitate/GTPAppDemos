@@ -38,6 +38,50 @@ def _load_providence_locations() -> List[Dict[str, Any]]:
     return _PROVIDENCE_LOCATIONS_CACHE
 
 
+def get_all_available_services() -> List[str]:
+    """Extract all unique service values from Providence locations."""
+    locations = _load_providence_locations()
+    services_set = set()
+    
+    for location in locations:
+        services = location.get("services", [])
+        for service_category in services:
+            values = service_category.get("values", [])
+            for service_item in values:
+                service_val = service_item.get("val", "").strip()
+                if service_val:
+                    services_set.add(service_val)
+    
+    return sorted(list(services_set))
+
+
+def location_offers_services(location: Dict[str, Any], required_services: List[str]) -> bool:
+    """
+    Check if a location offers all of the required services.
+    
+    Args:
+        location: Location dictionary
+        required_services: List of service names that must all be present
+    
+    Returns:
+        True if location offers ALL required services, False otherwise
+    """
+    if not required_services:
+        return True
+    
+    # Get all services offered by this location (case-insensitive)
+    location_services = set()
+    for service_category in location.get("services", []):
+        for service_item in service_category.get("values", []):
+            service_val = service_item.get("val", "").strip().lower()
+            if service_val:
+                location_services.add(service_val)
+    
+    # Check if all required services are present (case-insensitive)
+    required_lower = [s.strip().lower() for s in required_services]
+    return all(req in location_services for req in required_lower)
+
+
 async def fetch_providence_locations() -> List[Dict[str, Any]]:
     """Get Providence care locations from cache (with API fallback)."""
     # Try cache first
