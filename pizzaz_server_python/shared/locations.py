@@ -227,6 +227,12 @@ def _keyword_location_match(location: Dict[str, Any], reason: str) -> tuple[bool
         "same-day",
         "express care",
         "immediate care",
+        "covid test",
+        "covid-19 test",
+        "coronavirus test",
+        "flu shot",
+        "physical exam",
+        "vaccination",
     ]
     if reason_lower in very_general_queries:
         # These are SO general that ANY healthcare location should match
@@ -247,6 +253,10 @@ def _keyword_location_match(location: Dict[str, Any], reason: str) -> tuple[bool
         "women": ["obstetric", "gynecology", "maternity", "pregnancy"],
         "senior": ["geriatric", "elderly", "aging"],
         "care": ["clinic", "facility", "location", "center", "same-day", "walk-in"],
+        "covid": ["covid-19", "coronavirus", "covid19", "sars-cov-2", "pandemic"],
+        "test": ["testing", "exam", "examination", "screening", "check"],
+        "vaccination": ["vaccine", "shot", "immunization", "vaccinations"],
+        "flu": ["influenza", "flu-like", "seasonal"],
     }
     
     # Expand reason with synonyms
