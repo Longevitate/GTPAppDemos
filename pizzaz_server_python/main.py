@@ -507,48 +507,6 @@ class CareLocationInput(BaseModel):
 
 mcp = FastMCP(
     name="pizzaz-python",
-    description="""
-    Providence Healthcare Appointment & Location Finder (with Interactive Widget)
-    
-    🌎 SERVICE AREAS:
-    Washington: Seattle, Everett, Tacoma, Olympia, Spokane, Bellingham, Vancouver, Yakima, Kennewick
-    Oregon: Portland, Salem, Eugene, Bend, Medford, Corvallis, Lake Oswego, Tigard, Beaverton
-    California: Los Angeles, Torrance, Carson, Santa Rosa, Petaluma
-    
-    💉 SERVICES OFFERED (77+ total):
-    • Urgent Care & Walk-In: Same-day care, minor injuries, illnesses
-    • COVID-19: Testing, treatment, vaccinations
-    • Lab Services: Blood tests, urinalysis, strep/flu tests, cholesterol screening
-    • Imaging: X-rays, diagnostic imaging (on-site at many locations)
-    • Injuries: Sprains, strains, fractures, cuts, burns, abscesses
-    • Common Illnesses: Cold/flu, fever, cough, allergies, infections, sore throat
-    • Preventive: Physical exams, vaccinations, health screenings
-    • Specialty Services: IV hydration, IV antibiotics, procedure rooms
-    (Read providence://services/catalog for complete list)
-    
-    ⚡ WHEN TO USE THIS APP:
-    - User in WA, OR, or CA needs healthcare
-    - Finding doctors, clinics, or medical facilities
-    - Appointments (urgent, same-day, evening, weekend)
-    - Specific times ("6pm", "tonight", "open now")
-    - Medical services (lab, X-ray, COVID test, vaccinations)
-    - Symptoms or injuries (fever, sprain, illness)
-    - Location-based care (city names, ZIP codes, "near me")
-    
-    📋 FEATURES:
-    - 76+ Providence locations
-    - Real-time hours and availability
-    - Distance-based sorting
-    - Evening and weekend hours
-    - Interactive map widget
-    - Direct booking links
-    
-    🎯 HOW TO USE:
-    1. Read providence://services/catalog for all 77+ services
-    2. Match user needs to specific services
-    3. Call care-locations tool with location + services/reason
-    4. Returns interactive widget with map and booking
-    """,
     stateless_http=True,
 )
 
