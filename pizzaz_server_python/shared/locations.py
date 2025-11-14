@@ -215,6 +215,23 @@ def _keyword_location_match(location: Dict[str, Any], reason: str) -> tuple[bool
         return (True, None)
     
     reason_lower = reason.lower().strip()
+    
+    # SPECIAL CASE: Very common queries should match ALL locations
+    # This prevents over-filtering on generic healthcare requests
+    very_general_queries = [
+        "urgent care",
+        "urgent",
+        "walk-in",
+        "walk in",
+        "same day",
+        "same-day",
+        "express care",
+        "immediate care",
+    ]
+    if reason_lower in very_general_queries:
+        # These are SO general that ANY healthcare location should match
+        return (True, reason)
+    
     services = location.get("services", [])
     
     # Medical term synonyms for better matching
