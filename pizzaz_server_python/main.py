@@ -593,12 +593,10 @@ def _embedded_widget_resource(widget: PizzazWidget) -> types.EmbeddedResource:
     )
 
 
-@mcp._mcp_server.list_tools()
-async def _list_tools() -> List[types.Tool]:
-    # Create description based on widget type
-    description = widget.title
+def _get_tool_description(widget: PizzazWidget) -> str:
+    """Get enhanced description for a tool based on widget type."""
     if widget.identifier == "care-locations":
-        description = """Find Providence healthcare locations and check appointment availability.
+        return """Find Providence healthcare locations and check appointment availability.
 
 USE THIS TOOL FOR ANY QUERIES ABOUT:
 - Finding doctors, clinics, or medical facilities
@@ -611,12 +609,16 @@ USE THIS TOOL FOR ANY QUERIES ABOUT:
 Returns an interactive map widget showing nearby Providence locations with hours and booking links.
 
 IMPORTANT: Before calling this tool, read the providence://services/catalog resource to see all 77+ available services, then use the filter_services parameter to match user needs intelligently."""
-    
+    return widget.title
+
+
+@mcp._mcp_server.list_tools()
+async def _list_tools() -> List[types.Tool]:
     return [
         types.Tool(
             name=widget.identifier,
             title=widget.title,
-            description=description,
+            description=_get_tool_description(widget),
             inputSchema=deepcopy(
                 CARE_LOCATION_INPUT_SCHEMA 
                 if widget.identifier == "care-locations" 
