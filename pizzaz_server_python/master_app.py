@@ -22,7 +22,9 @@ async def health_check(request):
             "main_mcp": "/mcp",
             "text_only_mcp": "/textOnly/mcp"
         },
-        "version": "2.0.0"
+        "version": "2.0.1",
+        "build": "2025-11-14-filtering-fix",
+        "filtering_fix": "very_general_queries_enabled"
     })
 
 
