@@ -705,6 +705,13 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
 
     arguments = req.params.arguments or {}
     
+    # 📊 LOG INCOMING REQUEST
+    print(f"{'='*80}")
+    print(f"📥 MCP TOOL CALL: {req.params.name}")
+    print(f"⏰ Timestamp: {datetime.now().isoformat()}")
+    print(f"📋 Arguments: {json.dumps(arguments, indent=2)}")
+    print(f"{'='*80}")
+    
     # Handle care-locations tool differently
     if widget.identifier == "care-locations":
         try:

@@ -6,7 +6,9 @@ but returns formatted markdown text instead of custom widgets.
 
 from __future__ import annotations
 
+import json
 import os
+from datetime import datetime
 from typing import Any, Dict, List
 
 import mcp.types as types
@@ -240,6 +242,13 @@ IMPORTANT: Before calling this tool, read the providence://services/catalog-text
     @mcp._mcp_server.call_tool()
     async def _call_tool(name: str, arguments: dict) -> List[types.TextContent | types.ImageContent | types.EmbeddedResource]:
         """Handle tool calls."""
+        # 📊 LOG INCOMING REQUEST
+        print(f"{'='*80}")
+        print(f"📥 TEXT-ONLY MCP TOOL CALL: {name}")
+        print(f"⏰ Timestamp: {datetime.now().isoformat()}")
+        print(f"📋 Arguments: {json.dumps(arguments, indent=2)}")
+        print(f"{'='*80}")
+        
         if name != "care-locations-text":
             raise ValueError(f"Unknown tool: {name}")
         
