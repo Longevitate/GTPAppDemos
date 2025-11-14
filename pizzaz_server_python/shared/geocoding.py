@@ -92,9 +92,14 @@ def zip_to_coords(location_input: str) -> tuple[float, float] | None:
             return coords
     
     # Normalize input for city name matching (lowercase, remove punctuation/state)
-    normalized = location_input.lower().replace(',', '').replace('.', '')
-    # Remove state abbreviations
-    normalized = normalized.replace(' wa', '').replace(' or', '').replace(' ca', '').strip()
+    normalized = location_input.lower().replace(',', '').replace('.', '').strip()
+    
+    # Remove state abbreviations (must be at the end to avoid false matches)
+    # E.g., "Portland OR" → "portland", but not "Portland Oregon Trail" → "Portl egon Trail"
+    for state_suffix in [' washington', ' oregon', ' california', ' wa', ' or', ' ca']:
+        if normalized.endswith(state_suffix):
+            normalized = normalized[:-len(state_suffix)].strip()
+            break
     
     # Try hardcoded city coordinates (fast, reliable)
     if normalized in CITY_COORDINATES:
