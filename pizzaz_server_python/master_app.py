@@ -22,11 +22,12 @@ async def health_check(request):
             "main_mcp": "/mcp",
             "text_only_mcp": "/textOnly/mcp"
         },
-        "version": "2.0.3",
-        "build": "2025-11-14-filter-services-fix",
-        "geocoding_fix": "city_state_format_enabled",
+        "version": "2.0.4",
+        "build": "2025-11-14-alaska-support",
+        "geocoding_fix": "city_state_format_enabled_ak",
         "logging_fix": "request_params_logged",
-        "filter_services_fix": "flexible_keyword_matching"
+        "filter_services_fix": "flexible_keyword_matching",
+        "alaska_fix": "geocoding_and_fallback_matching"
     })
 
 

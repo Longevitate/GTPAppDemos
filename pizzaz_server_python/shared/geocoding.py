@@ -59,6 +59,12 @@ CITY_COORDINATES = {
     "carson": (33.8317, -118.2820),
     "santa rosa": (38.4404, -122.7141),
     "petaluma": (38.2324, -122.6367),
+    
+    # Alaska
+    "anchorage": (61.2181, -149.9003),
+    "fairbanks": (64.8378, -147.7164),
+    "juneau": (58.3019, -134.4197),
+    "kodiak": (57.7900, -152.4072),
 }
 
 
@@ -96,7 +102,7 @@ def zip_to_coords(location_input: str) -> tuple[float, float] | None:
     
     # Remove state abbreviations (must be at the end to avoid false matches)
     # E.g., "Portland OR" → "portland", but not "Portland Oregon Trail" → "Portl egon Trail"
-    for state_suffix in [' washington', ' oregon', ' california', ' wa', ' or', ' ca']:
+    for state_suffix in [' washington', ' oregon', ' california', ' alaska', ' wa', ' or', ' ca', ' ak']:
         if normalized.endswith(state_suffix):
             normalized = normalized[:-len(state_suffix)].strip()
             break

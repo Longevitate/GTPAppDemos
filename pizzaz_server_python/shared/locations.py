@@ -270,6 +270,23 @@ def _keyword_location_match(location: Dict[str, Any], reason: str) -> tuple[bool
     if any(term in reason_lower for term in general_terms):
         return (True, reason)
     
+    # FALLBACK: If location is marked as urgent/express care but has no service data,
+    # match any non-emergency healthcare query (helps with locations that have incomplete data)
+    if location.get("is_urgent_care") or location.get("is_express_care"):
+        # Check if services list is empty or has no meaningful data
+        has_service_data = False
+        for service_category in services:
+            if service_category.get("values"):
+                has_service_data = True
+                break
+        
+        if not has_service_data:
+            # No service data but marked as urgent/express care - match most queries
+            # Exclude emergency-specific queries (those are handled by detect_er_red_flags)
+            emergency_keywords = ["chest pain", "heart attack", "stroke", "unconscious", "911"]
+            if not any(kw in reason_lower for kw in emergency_keywords):
+                return (True, f"urgent/express care (incomplete service data)")
+    
     # No match found
     return (False, None)
 
