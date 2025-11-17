@@ -22,13 +22,13 @@ async def health_check(request):
             "main_mcp": "/mcp",
             "text_only_mcp": "/textOnly/mcp"
         },
-        "version": "2.0.5",
-        "build": "2025-11-14-deduplicate-functions",
+        "version": "2.0.6",
+        "build": "2025-11-17-hide-pizza-actions",
         "geocoding_fix": "city_state_format_enabled_ak",
         "logging_fix": "request_params_logged",
         "filter_services_fix": "flexible_keyword_matching",
         "alaska_fix": "geocoding_and_fallback_matching",
-        "critical_fix": "removed_duplicate_functions_in_main"
+        "pizza_actions": "temporarily_hidden"
     })
 
 
