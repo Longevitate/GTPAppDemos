@@ -207,7 +207,7 @@ class CareLocationInput(BaseModel):
 # Widget will call API with arguments passed via meta tags
 
 mcp = FastMCP(
-    name="pizzaz-python",
+    name="providence-care",
     stateless_http=True,
 )
 
@@ -389,15 +389,52 @@ async def _handle_read_resource(req: types.ReadResourceRequest) -> types.ServerR
     return types.ServerResult(types.ReadResourceResult(contents=contents))
 
 
+def _normalize_tool_name(tool_name: str) -> str:
+    """
+    Normalize tool names to handle common path construction mistakes.
+    
+    Handles cases like:
+    - "Providence AI Booking//Providence AI Booking/care-locations"
+    - "/providence/care-locations"
+    - "Providence AI Booking/link_xyz/care-locations"
+    
+    Returns just the tool identifier (e.g., "care-locations")
+    """
+    if not tool_name:
+        return tool_name
+    
+    # Remove any doubled slashes
+    while "//" in tool_name:
+        tool_name = tool_name.replace("//", "/")
+    
+    # Strip leading/trailing slashes
+    tool_name = tool_name.strip("/")
+    
+    # If it contains slashes, extract just the last segment (the actual tool name)
+    if "/" in tool_name:
+        tool_name = tool_name.split("/")[-1]
+    
+    return tool_name
+
+
 async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
-    widget = WIDGETS_BY_ID.get(req.params.name)
+    # Normalize the tool name to handle path construction mistakes
+    original_name = req.params.name
+    normalized_name = _normalize_tool_name(original_name)
+    
+    if original_name != normalized_name:
+        print(f"⚠️  Normalized tool name: '{original_name}' → '{normalized_name}'")
+    
+    widget = WIDGETS_BY_ID.get(normalized_name)
     if widget is None:
+        # Get list of available tool names for helpful error
+        available_tools = ", ".join(WIDGETS_BY_ID.keys())
         return types.ServerResult(
             types.CallToolResult(
                 content=[
                     types.TextContent(
                         type="text",
-                        text=f"Unknown tool: {req.params.name}",
+                        text=f"Unknown tool: {original_name}\n\nNormalized to: {normalized_name}\n\nAvailable tools: {available_tools}",
                     )
                 ],
                 isError=True,

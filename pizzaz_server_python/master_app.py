@@ -22,12 +22,10 @@ async def health_check(request):
             "main_mcp": "/mcp",
             "text_only_mcp": "/textOnly/mcp"
         },
-        "version": "2.0.6",
-        "build": "2025-11-17-hide-pizza-actions",
-        "geocoding_fix": "city_state_format_enabled_ak",
-        "logging_fix": "request_params_logged",
-        "filter_services_fix": "flexible_keyword_matching",
-        "alaska_fix": "geocoding_and_fallback_matching",
+        "version": "2.0.7",
+        "build": "2025-11-17-path-normalization",
+        "server_name": "providence-care",
+        "path_normalization": "enabled",
         "pizza_actions": "temporarily_hidden"
     })
 

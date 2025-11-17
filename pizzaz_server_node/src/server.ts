@@ -211,8 +211,8 @@ const resourceTemplates: ResourceTemplate[] = widgets.map((widget) => ({
 function createPizzazServer(): Server {
   const server = new Server(
     {
-      name: "pizzaz-node",
-      version: "0.1.0",
+      name: "providence-care",
+      version: "2.0.6",
     },
     {
       capabilities: {
@@ -265,13 +265,54 @@ function createPizzazServer(): Server {
     })
   );
 
+  function normalizeToolName(toolName: string): string {
+    /**
+     * Normalize tool names to handle common path construction mistakes.
+     * 
+     * Handles cases like:
+     * - "Providence AI Booking//Providence AI Booking/care-locations"
+     * - "/providence/care-locations"
+     * - "Providence AI Booking/link_xyz/care-locations"
+     * 
+     * Returns just the tool identifier (e.g., "care-locations")
+     */
+    if (!toolName) {
+      return toolName;
+    }
+
+    // Remove any doubled slashes
+    while (toolName.includes("//")) {
+      toolName = toolName.replace("//", "/");
+    }
+
+    // Strip leading/trailing slashes
+    toolName = toolName.replace(/^\/+|\/+$/g, "");
+
+    // If it contains slashes, extract just the last segment (the actual tool name)
+    if (toolName.includes("/")) {
+      const segments = toolName.split("/");
+      toolName = segments[segments.length - 1];
+    }
+
+    return toolName;
+  }
+
   server.setRequestHandler(
     CallToolRequestSchema,
     async (request: CallToolRequest) => {
-      const widget = widgetsById.get(request.params.name);
+      // Normalize the tool name to handle path construction mistakes
+      const originalName = request.params.name;
+      const normalizedName = normalizeToolName(originalName);
+
+      if (originalName !== normalizedName) {
+        console.log(`⚠️  Normalized tool name: '${originalName}' → '${normalizedName}'`);
+      }
+
+      const widget = widgetsById.get(normalizedName);
 
       if (!widget) {
-        throw new Error(`Unknown tool: ${request.params.name}`);
+        const availableTools = Array.from(widgetsById.keys()).join(", ");
+        throw new Error(`Unknown tool: ${originalName}\n\nNormalized to: ${normalizedName}\n\nAvailable tools: ${availableTools}`);
       }
 
       let structuredContent: any;
