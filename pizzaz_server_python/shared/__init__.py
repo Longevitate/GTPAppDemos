@@ -11,6 +11,11 @@ from .locations import (
     is_location_open_now,
 )
 from .geocoding import zip_to_coords, haversine_distance
+from .provider_search import (
+    search_providers,
+    format_provider_location,
+    get_provider_booking_url,
+)
 
 __all__ = [
     "detect_er_red_flags",
@@ -23,5 +28,8 @@ __all__ = [
     "is_location_open_now",
     "zip_to_coords",
     "haversine_distance",
+    "search_providers",
+    "format_provider_location",
+    "get_provider_booking_url",
 ]
 

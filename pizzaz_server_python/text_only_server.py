@@ -19,12 +19,15 @@ from .shared import (
     detect_er_red_flags,
     detect_service_requirements,
     fetch_providence_locations,
+    format_provider_location,
     get_all_available_services,
+    get_provider_booking_url,
     haversine_distance,
     is_location_open_now,
     location_has_service,
     location_matches_reason,
     location_offers_services,
+    search_providers,
     zip_to_coords,
 )
 
@@ -48,6 +51,49 @@ class CareLocationInput(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="allow")
 
 
+class ProviderSearchInput(BaseModel):
+    """Schema for provider search tools."""
+
+    search: str = Field(
+        ...,
+        description="Provider name, specialty, or condition to search for. Examples: 'cardiologist', 'Dr. Smith', 'pediatrician', 'heart disease specialist'",
+    )
+    location: str | None = Field(
+        default=None,
+        description="User location as city/state (e.g., 'Seattle WA', 'Portland OR') or ZIP code (e.g., '97202'). Optional.",
+    )
+    accepting_new_patients: bool | None = Field(
+        default=None,
+        description="Filter to only show providers accepting new patients. Set to true to filter.",
+    )
+    virtual_care: bool | None = Field(
+        default=None,
+        description="Filter to only show providers offering virtual/telemedicine visits. Set to true to filter.",
+    )
+    languages: List[str] | None = Field(
+        default=None,
+        description="Filter by languages spoken. Examples: ['Spanish'], ['Chinese', 'English']",
+    )
+    insurance: str | None = Field(
+        default=None,
+        description="Filter by insurance accepted. Examples: 'Kaiser', 'Premera', 'Aetna', 'Providence Health Plan'",
+    )
+    gender: str | None = Field(
+        default=None,
+        description="Filter by provider gender. Use 'Male' or 'Female'.",
+    )
+    age_group: str | None = Field(
+        default=None,
+        description="Filter by age groups seen. Options: 'Pediatrics', 'Teenagers', 'Adult', 'Geriatrics'",
+    )
+    limit: int = Field(
+        default=5,
+        description="Number of results to return (default: 5, max: 20)",
+    )
+
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
+
+
 CARE_LOCATION_INPUT_SCHEMA: Dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -66,6 +112,51 @@ CARE_LOCATION_INPUT_SCHEMA: Dict[str, Any] = {
         }
     },
     "required": [],
+    "additionalProperties": False,
+}
+
+PROVIDER_SEARCH_INPUT_SCHEMA: Dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "search": {
+            "type": "string",
+            "description": "Provider name, specialty, or condition to search for. Examples: 'cardiologist', 'Dr. Smith', 'pediatrician', 'heart disease specialist'",
+        },
+        "location": {
+            "type": "string",
+            "description": "User location as city/state (e.g., 'Seattle WA', 'Portland OR') or ZIP code (e.g., '97202'). Optional.",
+        },
+        "accepting_new_patients": {
+            "type": "boolean",
+            "description": "Filter to only show providers accepting new patients. Set to true to filter.",
+        },
+        "virtual_care": {
+            "type": "boolean",
+            "description": "Filter to only show providers offering virtual/telemedicine visits. Set to true to filter.",
+        },
+        "languages": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Filter by languages spoken. Examples: ['Spanish'], ['Chinese', 'English']",
+        },
+        "insurance": {
+            "type": "string",
+            "description": "Filter by insurance accepted. Examples: 'Kaiser', 'Premera', 'Aetna', 'Providence Health Plan'",
+        },
+        "gender": {
+            "type": "string",
+            "description": "Filter by provider gender. Use 'Male' or 'Female'.",
+        },
+        "age_group": {
+            "type": "string",
+            "description": "Filter by age groups seen. Options: 'Pediatrics', 'Teenagers', 'Adult', 'Geriatrics'",
+        },
+        "limit": {
+            "type": "integer",
+            "description": "Number of results to return (default: 5, max: 20)",
+        },
+    },
+    "required": ["search"],
     "additionalProperties": False,
 }
 
@@ -181,6 +272,170 @@ def format_location_text(
     return output
 
 
+def format_providers_text(
+    providers: List[Dict[str, Any]],
+    search_query: str,
+    location: str | None,
+    total_count: int,
+    filtered_count: int,
+) -> str:
+    """
+    Format providers as readable markdown text.
+    
+    Args:
+        providers: List of provider dictionaries from OmniSearch
+        search_query: User's search query
+        location: User's location (if provided)
+        total_count: Total providers found before filtering
+        filtered_count: Number of providers after filtering
+    
+    Returns:
+        Formatted markdown string
+    """
+    # Build header
+    output = "# 👨‍⚕️ Providence Provider Search Results\n\n"
+    
+    if not providers:
+        output += "No providers found matching your criteria.\n\n"
+        output += f"*Searched for: {search_query}*\n"
+        if location:
+            output += f"*Location: {location}*\n"
+        return output
+    
+    # Add context about the search
+    context_parts = []
+    context_parts.append(f"**Search:** {search_query}")
+    if location:
+        context_parts.append(f"**Location:** {location}")
+    
+    output += " | ".join(context_parts) + "\n\n"
+    
+    if filtered_count < total_count:
+        output += f"Showing **{filtered_count}** of **{total_count}** providers (filtered by your criteria):\n\n"
+    else:
+        output += f"Found **{filtered_count}** provider{'s' if filtered_count != 1 else ''}:\n\n"
+    
+    output += "---\n\n"
+    
+    # Format each provider
+    for idx, provider in enumerate(providers, 1):
+        # Provider name and credentials
+        name = provider.get('Name', 'Unknown Provider')
+        degrees = provider.get('Degrees', [])
+        degree_str = ", ".join(degrees) if degrees else ""
+        
+        output += f"## {idx}. {name}"
+        if degree_str:
+            output += f", {degree_str}"
+        output += "\n\n"
+        
+        # Gender (optional emoji)
+        gender = provider.get('Gender', '')
+        if gender:
+            gender_emoji = "👨" if gender.lower() == 'male' else "👩" if gender.lower() == 'female' else ""
+            output += f"{gender_emoji} **{gender}**\n\n"
+        
+        # Specialties
+        primary_specialties = provider.get('PrimarySpecialties', [])
+        sub_specialties = provider.get('SubSpecialties', [])
+        
+        if primary_specialties:
+            output += f"🩺 **Specialty:** {', '.join(primary_specialties)}\n\n"
+        if sub_specialties and sub_specialties != primary_specialties:
+            output += f"📋 **Sub-specialties:** {', '.join(sub_specialties)}\n\n"
+        
+        # Distance (if available)
+        distance = provider.get('distance')
+        if distance is not None:
+            output += f"📍 **{distance:.1f} miles away**\n\n"
+        
+        # Accepting new patients & virtual care
+        accepting = provider.get('AcceptingNewPatients', 0)
+        virtual = provider.get('VirtualCare', 0)
+        
+        badges = []
+        if accepting == 1:
+            badges.append("✅ Accepting New Patients")
+        else:
+            badges.append("⏸️ Not Accepting New Patients")
+        
+        if virtual == 1:
+            badges.append("💻 Offers Virtual Care")
+        
+        output += " | ".join(badges) + "\n\n"
+        
+        # Rating
+        rating_value = provider.get('Rating', 0) or provider.get('rating_value', 0)
+        rating_count = provider.get('RatingCount', 0) or provider.get('rating_count', 0)
+        
+        if rating_value and rating_count:
+            stars = "⭐" * int(float(rating_value))
+            output += f"{stars} **{rating_value}** ({rating_count} reviews)\n\n"
+        
+        # Languages
+        languages = provider.get('Languages', [])
+        if languages:
+            output += f"🗣️ **Languages:** {', '.join(languages)}\n\n"
+        
+        # Ages seen
+        ages_seen = provider.get('AgesSeen', [])
+        if ages_seen:
+            output += f"👥 **Ages Seen:** {', '.join(ages_seen)}\n\n"
+        
+        # Practice locations
+        location_names = provider.get('LocationNames', [])
+        addresses = provider.get('Addresses', [])
+        
+        if location_names:
+            output += f"🏥 **Practice Location{'s' if len(location_names) > 1 else ''}:**\n\n"
+            # Show first location with address
+            if addresses:
+                output += f"  - **{location_names[0]}**\n"
+                output += f"    {addresses[0]}\n\n"
+            else:
+                output += f"  - {location_names[0]}\n\n"
+            
+            # Show additional locations
+            if len(location_names) > 1:
+                output += f"  *Also practices at {len(location_names) - 1} other location(s)*\n\n"
+        
+        # Phone
+        phones = provider.get('Phones', [])
+        if phones:
+            output += f"📞 **Phone:** {phones[0]}\n\n"
+        
+        # Professional statement (truncated)
+        statement = provider.get('ProfessionalStatement', '')
+        if statement:
+            # Remove HTML tags
+            import re
+            statement_clean = re.sub('<[^<]+?>', ' ', statement)
+            statement_clean = ' '.join(statement_clean.split())  # Normalize whitespace
+            
+            # Truncate to ~200 characters
+            if len(statement_clean) > 200:
+                statement_clean = statement_clean[:197] + "..."
+            
+            output += f"*{statement_clean}*\n\n"
+        
+        # Booking link
+        booking_url = get_provider_booking_url(provider)
+        if booking_url:
+            # Handle relative URLs
+            if booking_url.startswith('/'):
+                booking_url = f"https://www.providence.org{booking_url}"
+            output += f"🔗 [View Profile & Book Appointment]({booking_url})\n\n"
+        
+        # Add separator between providers (except last one)
+        if idx < len(providers):
+            output += "---\n\n"
+    
+    # Add footer
+    output += "\n**Need to book an appointment?** Click the profile links above or call the provider directly.\n"
+    
+    return output
+
+
 def create_text_only_app():
     """Factory function to create the text-only MCP app."""
     
@@ -220,17 +475,50 @@ def create_text_only_app():
                 description="""Find Providence healthcare locations and check appointment availability.
 
 USE THIS TOOL FOR ANY QUERIES ABOUT:
-- Finding doctors, clinics, or medical facilities
-- Healthcare appointments (urgent care, primary care, express care, walk-in)
-- Checking availability (evening hours, weekend, same-day, "open now", specific times like "6pm")
-- Specific medical services (lab work, X-ray, COVID test, physical exams, vaccinations, etc.)
+- Finding clinics or medical facilities (urgent care, express care, walk-in clinics)
+- Healthcare appointments at facilities (urgent care, primary care, express care, walk-in)
+- Checking facility availability (evening hours, weekend, same-day, "open now", specific times like "6pm")
+- Specific medical services at locations (lab work, X-ray, COVID test, physical exams, vaccinations, etc.)
 - Location-based care ("near me", city names, ZIP codes, specific addresses)
 - Symptoms or medical needs requiring care (fever, injury, illness, etc.)
 
 Returns formatted Markdown text with nearby Providence locations, hours, ratings, and booking links.
 
-IMPORTANT: Before calling this tool, read the providence://services/catalog-text resource to see all 77+ available services, then use the filter_services parameter to match user needs intelligently.""",
+IMPORTANT: Before calling this tool, read the providence://services/catalog-text resource to see all 77+ available services, then use the filter_services parameter to match user needs intelligently.
+
+NOTE: For finding specific doctors/providers/specialists, use the find-provider-text tool instead.""",
                 inputSchema=CARE_LOCATION_INPUT_SCHEMA,
+                annotations={
+                    "destructiveHint": False,
+                    "openWorldHint": False,
+                    "readOnlyHint": True,
+                },
+            ),
+            types.Tool(
+                name="find-provider-text",
+                title="Find Healthcare Providers (Text)",
+                description="""Find Providence healthcare providers (doctors, specialists, physicians, PAs, NPs).
+
+USE THIS TOOL FOR ANY QUERIES ABOUT:
+- Finding doctors by specialty (cardiologist, pediatrician, dermatologist, orthopedist, etc.)
+- Finding doctors by name (Dr. Smith, Dr. Johnson, etc.)
+- Finding specialists for specific conditions (heart disease, diabetes, cancer, etc.)
+- Provider availability (accepting new patients, virtual care, telemedicine)
+- Provider preferences (gender, languages spoken, age groups treated)
+- Insurance acceptance checks
+
+FILTERS AVAILABLE:
+- Accepting new patients
+- Virtual/telemedicine visits
+- Languages spoken
+- Insurance accepted
+- Provider gender
+- Age groups treated (Pediatrics, Teenagers, Adult, Geriatrics)
+
+Returns formatted Markdown text with provider profiles, specialties, ratings, locations, and booking links.
+
+NOTE: For finding urgent care clinics or medical facilities, use the care-locations-text tool instead.""",
+                inputSchema=PROVIDER_SEARCH_INPUT_SCHEMA,
                 annotations={
                     "destructiveHint": False,
                     "openWorldHint": False,
@@ -249,19 +537,86 @@ IMPORTANT: Before calling this tool, read the providence://services/catalog-text
         print(f"📋 Arguments: {json.dumps(arguments, indent=2)}")
         print(f"{'='*80}")
         
-        if name != "care-locations-text":
-            raise ValueError(f"Unknown tool: {name}")
-        
-        # Validate input
-        try:
-            payload = CareLocationInput.model_validate(arguments)
-        except ValidationError as exc:
+        # Handle provider search tool
+        if name == "find-provider-text":
+            # Validate input
+            try:
+                payload = ProviderSearchInput.model_validate(arguments)
+            except ValidationError as exc:
+                return [
+                    types.TextContent(
+                        type="text",
+                        text=f"❌ Input validation error: {exc.errors()}",
+                    )
+                ]
+            
+            print(f"🔍 Provider Search: '{payload.search}'")
+            if payload.location:
+                print(f"📍 Location: {payload.location}")
+            if payload.accepting_new_patients:
+                print(f"✅ Filter: Accepting new patients")
+            if payload.virtual_care:
+                print(f"💻 Filter: Virtual care")
+            
+            # Search for providers using OmniSearch API
+            result = await search_providers(
+                search=payload.search,
+                location=payload.location,
+                accepting_new_patients=payload.accepting_new_patients,
+                virtual_care=payload.virtual_care,
+                languages=payload.languages,
+                insurance=payload.insurance,
+                gender=payload.gender,
+                age_group=payload.age_group,
+                top=min(payload.limit, 20),  # Cap at 20
+            )
+            
+            if not result.get("success", False):
+                error_msg = result.get("error", "Unknown error occurred")
+                print(f"❌ Provider search failed: {error_msg}")
+                return [
+                    types.TextContent(
+                        type="text",
+                        text=f"❌ Provider search failed: {error_msg}\n\nPlease try again or contact Providence directly.",
+                    )
+                ]
+            
+            providers = result.get("providers", [])
+            total_count = result.get("total_count", 0)
+            filtered_count = result.get("filtered_count", 0)
+            
+            print(f"✅ Found {filtered_count} providers (total: {total_count})")
+            
+            # Format as text
+            output_text = format_providers_text(
+                providers=providers,
+                search_query=payload.search,
+                location=payload.location,
+                total_count=total_count,
+                filtered_count=filtered_count,
+            )
+            
             return [
                 types.TextContent(
                     type="text",
-                    text=f"❌ Input validation error: {exc.errors()}",
+                    text=output_text,
                 )
             ]
+        
+        # Handle care locations tool
+        elif name == "care-locations-text":
+            # Validate input
+            try:
+                payload = CareLocationInput.model_validate(arguments)
+            except ValidationError as exc:
+                return [
+                    types.TextContent(
+                        type="text",
+                        text=f"❌ Input validation error: {exc.errors()}",
+                    )
+                ]
+        else:
+            raise ValueError(f"Unknown tool: {name}")
         
         # Check for emergency red flags first
         is_emergency, emergency_warning = detect_er_red_flags(payload.reason)
