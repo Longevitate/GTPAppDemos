@@ -37,6 +37,7 @@ from .shared import (
     location_has_service,
     location_matches_reason,
     location_offers_services,
+    search_providers,
     zip_to_coords,
 )
 
@@ -117,6 +118,15 @@ widgets: List[PizzazWidget] = [
         invoked="Found care locations",
         html=_load_widget_html("care-list"),
         response_text="Showing Providence care locations!",
+    ),
+    PizzazWidget(
+        identifier="find-providers",
+        title="Find Healthcare Providers",
+        template_uri="ui://widget/provider-list.html",
+        invoking="Searching for providers",
+        invoked="Found providers",
+        html=_load_widget_html("provider-list"),
+        response_text="Showing Providence healthcare providers!",
     ),
 ]
 
@@ -203,6 +213,49 @@ class CareLocationInput(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="allow")
 
 
+class ProviderSearchInput(BaseModel):
+    """Schema for provider search tools."""
+
+    search: str = Field(
+        ...,
+        description="Provider name, specialty, or condition to search for. Examples: 'cardiologist', 'Dr. Smith', 'pediatrician', 'heart disease specialist'",
+    )
+    location: str | None = Field(
+        default=None,
+        description="User location as city/state (e.g., 'Seattle WA', 'Portland OR') or ZIP code (e.g., '97202'). Optional.",
+    )
+    accepting_new_patients: bool | None = Field(
+        default=None,
+        description="Filter to only show providers accepting new patients. Set to true to filter.",
+    )
+    virtual_care: bool | None = Field(
+        default=None,
+        description="Filter to only show providers offering virtual/telemedicine visits. Set to true to filter.",
+    )
+    languages: List[str] | None = Field(
+        default=None,
+        description="Filter by languages spoken. Examples: ['Spanish'], ['Chinese', 'English']",
+    )
+    insurance: str | None = Field(
+        default=None,
+        description="Filter by insurance accepted. Examples: 'Kaiser', 'Premera', 'Aetna', 'Providence Health Plan'",
+    )
+    gender: str | None = Field(
+        default=None,
+        description="Filter by provider gender. Use 'Male' or 'Female'.",
+    )
+    age_group: str | None = Field(
+        default=None,
+        description="Filter by age groups seen. Options: 'Pediatrics', 'Teenagers', 'Adult', 'Geriatrics'",
+    )
+    limit: int = Field(
+        default=10,
+        description="Number of results to return (default: 10, max: 20)",
+    )
+
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
+
+
 # No session storage needed - stateless architecture!
 # Widget will call API with arguments passed via meta tags
 
@@ -267,6 +320,51 @@ CARE_LOCATION_INPUT_SCHEMA: Dict[str, Any] = {
     "additionalProperties": False,
 }
 
+PROVIDER_SEARCH_INPUT_SCHEMA: Dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "search": {
+            "type": "string",
+            "description": "Provider name, specialty, or condition to search for. Examples: 'cardiologist', 'Dr. Smith', 'pediatrician', 'heart disease specialist'",
+        },
+        "location": {
+            "type": "string",
+            "description": "User location as city/state (e.g., 'Seattle WA', 'Portland OR') or ZIP code (e.g., '97202'). Optional.",
+        },
+        "accepting_new_patients": {
+            "type": "boolean",
+            "description": "Filter to only show providers accepting new patients. Set to true to filter.",
+        },
+        "virtual_care": {
+            "type": "boolean",
+            "description": "Filter to only show providers offering virtual/telemedicine visits. Set to true to filter.",
+        },
+        "languages": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Filter by languages spoken. Examples: ['Spanish'], ['Chinese', 'English']",
+        },
+        "insurance": {
+            "type": "string",
+            "description": "Filter by insurance accepted. Examples: 'Kaiser', 'Premera', 'Aetna', 'Providence Health Plan'",
+        },
+        "gender": {
+            "type": "string",
+            "description": "Filter by provider gender. Use 'Male' or 'Female'.",
+        },
+        "age_group": {
+            "type": "string",
+            "description": "Filter by age groups seen. Options: 'Pediatrics', 'Teenagers', 'Adult', 'Geriatrics'",
+        },
+        "limit": {
+            "type": "integer",
+            "description": "Number of results to return (default: 10, max: 20)",
+        },
+    },
+    "required": ["search"],
+    "additionalProperties": False,
+}
+
 
 def _resource_description(widget: PizzazWidget) -> str:
     return f"{widget.title} widget markup"
@@ -300,16 +398,40 @@ def _get_tool_description(widget: PizzazWidget) -> str:
         return """Find Providence healthcare locations and check appointment availability.
 
 USE THIS TOOL FOR ANY QUERIES ABOUT:
-- Finding doctors, clinics, or medical facilities
-- Healthcare appointments (urgent care, primary care, express care, walk-in)
-- Checking availability (evening hours, weekend, same-day, "open now", specific times like "6pm")
-- Specific medical services (lab work, X-ray, COVID test, physical exams, vaccinations, etc.)
-- Location-based care ("near me", city names, ZIP codes, specific addresses)
-- Symptoms or medical needs requiring care (fever, injury, illness, etc.)
+- Finding clinics or medical facilities (urgent care, express care, walk-in clinics)
+- Healthcare appointments at facilities (urgent care, primary care, express care, walk-in)
+- Checking facility availability (evening hours, weekend, same-day, "open now", specific times like "6pm")
+- Specific medical services at locations (lab work, X-ray, COVID test, physical exams, vaccinations, etc.)
+- Location-based facility care ("near me", city names, ZIP codes, specific addresses)
+- Symptoms or medical needs requiring care at facilities (fever, injury, illness, etc.)
 
-Returns an interactive map widget showing nearby Providence locations with hours and booking links.
+Returns an interactive widget showing nearby Providence locations with hours and booking links.
 
-IMPORTANT: Before calling this tool, read the providence://services/catalog resource to see all 77+ available services, then use the filter_services parameter to match user needs intelligently."""
+IMPORTANT: Before calling this tool, read the providence://services/catalog resource to see all 77+ available services, then use the filter_services parameter to match user needs intelligently.
+
+NOTE: For finding specific doctors/providers/specialists, use the find-providers tool instead."""
+    elif widget.identifier == "find-providers":
+        return """Find Providence healthcare providers (doctors, specialists, physicians, PAs, NPs).
+
+USE THIS TOOL FOR ANY QUERIES ABOUT:
+- Finding doctors by specialty (cardiologist, pediatrician, dermatologist, orthopedist, etc.)
+- Finding doctors by name (Dr. Smith, Dr. Johnson, etc.)
+- Finding specialists for specific conditions (heart disease, diabetes, cancer, etc.)
+- Provider availability (accepting new patients, virtual care, telemedicine)
+- Provider preferences (gender, languages spoken, age groups treated)
+- Insurance acceptance checks
+
+FILTERS AVAILABLE:
+- Accepting new patients
+- Virtual/telemedicine visits
+- Languages spoken
+- Insurance accepted
+- Provider gender
+- Age groups treated (Pediatrics, Teenagers, Adult, Geriatrics)
+
+Returns an interactive widget with provider cards showing profiles, specialties, ratings, locations, and booking links.
+
+NOTE: For finding urgent care clinics or medical facilities, use the care-locations tool instead."""
     return widget.title
 
 
@@ -322,7 +444,9 @@ async def _list_tools() -> List[types.Tool]:
             description=_get_tool_description(widget),
             inputSchema=deepcopy(
                 CARE_LOCATION_INPUT_SCHEMA 
-                if widget.identifier == "care-locations" 
+                if widget.identifier == "care-locations"
+                else PROVIDER_SEARCH_INPUT_SCHEMA
+                if widget.identifier == "find-providers"
                 else TOOL_INPUT_SCHEMA
             ),
             _meta=_tool_meta(widget),
@@ -696,6 +820,72 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
             "filtered_by_reason": bool(payload.reason and payload.reason.strip()),
             "service_requirements": service_requirements,
             "is_emergency": False,
+        }
+    elif widget.identifier == "find-providers":
+        # Handle provider search
+        try:
+            payload = ProviderSearchInput.model_validate(arguments)
+        except ValidationError as exc:
+            return types.ServerResult(
+                types.CallToolResult(
+                    content=[
+                        types.TextContent(
+                            type="text",
+                            text=f"Input validation error: {exc.errors()}",
+                        )
+                    ],
+                    isError=True,
+                )
+            )
+        
+        print(f"🔍 Provider Search: '{payload.search}'")
+        if payload.location:
+            print(f"📍 Location: {payload.location}")
+        if payload.accepting_new_patients:
+            print(f"✅ Filter: Accepting new patients")
+        if payload.virtual_care:
+            print(f"💻 Filter: Virtual care")
+        
+        # Search for providers using OmniSearch API
+        result = await search_providers(
+            search=payload.search,
+            location=payload.location,
+            accepting_new_patients=payload.accepting_new_patients,
+            virtual_care=payload.virtual_care,
+            languages=payload.languages,
+            insurance=payload.insurance,
+            gender=payload.gender,
+            age_group=payload.age_group,
+            top=min(payload.limit, 20),  # Cap at 20
+        )
+        
+        if not result.get("success", False):
+            error_msg = result.get("error", "Unknown error occurred")
+            print(f"❌ Provider search failed: {error_msg}")
+            return types.ServerResult(
+                types.CallToolResult(
+                    content=[
+                        types.TextContent(
+                            type="text",
+                            text=f"❌ Provider search failed: {error_msg}\n\nPlease try again or contact Providence directly.",
+                        )
+                    ],
+                    isError=True,
+                )
+            )
+        
+        providers = result.get("providers", [])
+        total_count = result.get("total_count", 0)
+        filtered_count = result.get("filtered_count", 0)
+        
+        print(f"✅ Found {filtered_count} providers (total: {total_count})")
+        
+        structured_content = {
+            "search_query": payload.search,
+            "location": payload.location or "",
+            "providers": providers,
+            "total_count": total_count,
+            "filtered_count": filtered_count,
         }
     else:
         # Handle pizza tools

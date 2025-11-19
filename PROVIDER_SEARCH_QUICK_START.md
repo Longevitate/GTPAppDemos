@@ -117,3 +117,4 @@ The provider search tool is now fully integrated into the **Providence TEXT-only
 
 For detailed implementation info, see `PROVIDER_SEARCH_IMPLEMENTATION.md`
 
+
