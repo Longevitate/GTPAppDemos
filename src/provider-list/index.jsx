@@ -42,9 +42,9 @@ function ProviderCard({ provider, onClick }) {
 
   return (
     <div className="provider-card border border-gray-200 rounded-xl p-4 hover:shadow-lg transition-shadow bg-white">
-      <div className="flex gap-4">
-        {/* Provider Photo */}
-        <div className="flex-shrink-0">
+      <div className="flex gap-6">
+        {/* LEFT COLUMN: Photo + Rating */}
+        <div className="flex-shrink-0 flex flex-col items-center gap-2">
           <div className="w-20 h-20 rounded-full overflow-hidden bg-gray-100 ring-2 ring-gray-200">
             {ImageUrl ? (
               <img
@@ -64,24 +64,15 @@ function ProviderCard({ provider, onClick }) {
               {genderEmoji}
             </div>
           </div>
-        </div>
-
-        {/* Provider Info */}
-        <div className="flex-1 min-w-0">
-          {/* Name and Credentials */}
-          <h3 className="text-lg font-semibold text-[#003da5] mb-1">
-            {Name}
-            {degreeString && <span className="text-gray-600 font-normal">, {degreeString}</span>}
-          </h3>
-
-          {/* Rating */}
+          
+          {/* Rating under photo */}
           {hasRating && (
-            <div className="flex items-center gap-2 mb-2">
+            <div className="flex flex-col items-center gap-1">
               <div className="flex items-center gap-0.5">
                 {[...Array(5)].map((_, idx) => (
                   <Heart
                     key={idx}
-                    className={`h-4 w-4 ${
+                    className={`h-3.5 w-3.5 ${
                       idx < Math.floor(rating)
                         ? "fill-yellow-400 text-yellow-400"
                         : "fill-gray-200 text-gray-200"
@@ -89,10 +80,19 @@ function ProviderCard({ provider, onClick }) {
                   />
                 ))}
               </div>
-              <span className="text-sm font-semibold">{rating.toFixed(1)}</span>
-              <span className="text-xs text-gray-500">({ratingCount} reviews)</span>
+              <span className="text-xs font-semibold">{rating.toFixed(1)}</span>
+              <span className="text-xs text-gray-500">({ratingCount})</span>
             </div>
           )}
+        </div>
+
+        {/* CENTER COLUMN: Details */}
+        <div className="flex-1 min-w-0">
+          {/* Name and Credentials */}
+          <h3 className="text-lg font-semibold text-[#003da5] mb-2">
+            {Name}
+            {degreeString && <span className="text-gray-600 font-normal">, {degreeString}</span>}
+          </h3>
 
           {/* Specialties */}
           {PrimarySpecialties.length > 0 && (
@@ -137,26 +137,32 @@ function ProviderCard({ provider, onClick }) {
           )}
 
           {/* Location */}
-          <div className="text-sm text-gray-700 mb-2">
+          <div className="text-sm text-gray-700">
             <p className="font-medium">{primaryLocation}</p>
             {primaryAddress && <p className="text-gray-500 text-xs">{primaryAddress}</p>}
           </div>
+        </div>
 
+        {/* RIGHT COLUMN: Actions */}
+        <div className="flex-shrink-0 flex flex-col items-end justify-center gap-3 min-w-[160px]">
           {/* Phone */}
           {primaryPhone && (
-            <p className="text-sm text-gray-600 mb-3">
-              <Phone className="inline h-4 w-4 mr-1" />
-              {primaryPhone}
-            </p>
+            <a
+              href={`tel:${primaryPhone}`}
+              className="flex items-center gap-2 text-sm text-gray-700 hover:text-[#003da5] transition-colors"
+            >
+              <Phone className="h-4 w-4" />
+              <span>{primaryPhone}</span>
+            </a>
           )}
 
           {/* Book Button */}
           {ProviderUniqueUrlOnesite && (
             <button
               onClick={() => window.open(ProviderUniqueUrlOnesite, "_blank")}
-              className="px-4 py-2 bg-[#003da5] text-white rounded-lg text-sm font-semibold hover:bg-[#002b73] transition-colors"
+              className="w-full px-4 py-2 bg-[#003da5] text-white rounded-lg text-sm font-semibold hover:bg-[#002b73] transition-colors flex items-center justify-center gap-2"
             >
-              <Globe className="inline h-4 w-4 mr-1" />
+              <Globe className="h-4 w-4" />
               View Profile & Book
             </button>
           )}
@@ -237,18 +243,20 @@ function FilterBar({ providers, onFilteredChange }) {
 
   return (
     <div className="mb-4">
-      <button
-        onClick={() => setShowFilters(!showFilters)}
-        className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-      >
-        <Filter className="h-4 w-4" />
-        Filters
-        {activeFilterCount > 0 && (
-          <span className="ml-1 px-2 py-0.5 bg-[#003da5] text-white rounded-full text-xs">
-            {activeFilterCount}
-          </span>
-        )}
-      </button>
+      <div className="flex justify-end">
+        <button
+          onClick={() => setShowFilters(!showFilters)}
+          className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+        >
+          <Filter className="h-4 w-4" />
+          Filters
+          {activeFilterCount > 0 && (
+            <span className="ml-1 px-2 py-0.5 bg-[#003da5] text-white rounded-full text-xs">
+              {activeFilterCount}
+            </span>
+          )}
+        </button>
+      </div>
 
       {showFilters && (
         <div className="mt-3 p-4 border border-gray-200 rounded-lg bg-gray-50">
@@ -394,16 +402,20 @@ function App() {
             </div>
           ) : (
             <>
-              {/* Results Count */}
-              <div className="py-3 text-sm text-gray-600">
-                Showing {filteredProviders.length} of {providers.length} provider{providers.length !== 1 ? "s" : ""}
-              </div>
+              {/* Results Count and Filter Bar */}
+              <div className="py-3">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="text-sm text-gray-600">
+                    Showing {filteredProviders.length} of {providers.length} provider{providers.length !== 1 ? "s" : ""}
+                  </div>
+                </div>
 
-              {/* Filter Bar */}
-              <FilterBar
-                providers={providers}
-                onFilteredChange={setFilteredProviders}
-              />
+                {/* Filter Bar */}
+                <FilterBar
+                  providers={providers}
+                  onFilteredChange={setFilteredProviders}
+                />
+              </div>
 
               {/* Provider List */}
               <div className="space-y-4 mt-4">
