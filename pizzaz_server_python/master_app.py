@@ -279,7 +279,13 @@ app = CORSMiddleware(
 
 
 if __name__ == "__main__":
+    import sys
     import uvicorn
+    
+    # Fix for Windows: Set the event loop policy to avoid aiohttp connector errors
+    if sys.platform == "win32":
+        import asyncio
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     
     print("=" * 60)
     print("🚀 Providence Care MCP Servers")
