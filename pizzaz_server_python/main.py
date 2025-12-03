@@ -23,6 +23,7 @@ from typing import Dict, Any, Optional
 
 import mcp.types as types
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from starlette.staticfiles import StaticFiles
 
@@ -259,9 +260,14 @@ class ProviderSearchInput(BaseModel):
 # No session storage needed - stateless architecture!
 # Widget will call API with arguments passed via meta tags
 
+# Disable DNS rebinding protection for Azure deployment
+# (allows requests from provgpt.azurewebsites.net and ChatGPT)
 mcp = FastMCP(
     name="providence-care",
     stateless_http=True,
+    transport_security=TransportSecuritySettings(
+        enable_dns_rebinding_protection=False,
+    ),
 )
 
 

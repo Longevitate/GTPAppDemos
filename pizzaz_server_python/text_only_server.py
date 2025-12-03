@@ -13,6 +13,7 @@ from typing import Any, Dict, List
 
 import mcp.types as types
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from .shared import (
@@ -439,9 +440,13 @@ def format_providers_text(
 def create_text_only_app():
     """Factory function to create the text-only MCP app."""
     
+    # Disable DNS rebinding protection for Azure deployment
     mcp = FastMCP(
         name="providence-care-text-only",
         stateless_http=True,
+        transport_security=TransportSecuritySettings(
+            enable_dns_rebinding_protection=False,
+        ),
     )
 
     # MCP Resource: Expose available healthcare services to ChatGPT
